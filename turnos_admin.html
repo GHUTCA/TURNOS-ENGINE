@@ -1036,10 +1036,11 @@ let personalEditando = null;
 // ══════════════════════════════════════
 // LOGIN GOOGLE
 // ══════════════════════════════════════
-function iniciarSesion() {
-  // Simular Google OAuth — en producción usar Google Identity Services
+async function iniciarSesion() {
   const email = prompt('Ingresa tu email Google autorizado:');
   if (!email) return;
+  // Asegurar que parámetros estén cargados antes de verificar rol
+  if (!parametros.ROLES_ADMIN) await init();
   procesarLogin(email.trim().toLowerCase());
 }
 
