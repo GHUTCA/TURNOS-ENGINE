@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Turnos — PINSA</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --negro:    #0D0D0D;
+    --azul:     #1A1A2E;
+    --rojo:     #E94560;
+    --blanco:   #F8F8F8;
+    --gris1:    #1E1E2E;
+    --gris2:    #2A2A3E;
+    --gris3:    #3A3A5E;
+    --gris4:    #8888AA;
+    --oficial:  #2ECC71;
+    --operativo:#F39C12;
+    --ausente:  #E74C3C;
+    --tarde:    #E67E22;
+    --permiso:  #9B59B6;
+    --libre:    #2A2A3E;
+    --font-mono: 'DM Mono', monospace;
+    --font-sans: 'DM Sans', sans-serif;
+    --radius:   8px;
+    --transition: 0.15s ease;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--negro);
+    color: var(--blanco);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--azul);
+    padding: 16px 20px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--rojo);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .logo {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--rojo);
+    letter-spacing: -0.5px;
+  }
+  .local-badge {
+    background: var(--gris2);
+    border: 1px solid var(--gris3);
+    color: var(--gris4);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .user-info {
+    font-size: 11px;
+    color: var(--gris4);
+    font-family: var(--font-mono);
+    text-align: right;
+  }
+  .user-rol {
+    color: var(--rojo);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── NAV TABS ── */
+  .nav-tabs {
+    display: flex;
+    background: var(--gris1);
+    border-bottom: 1px solid var(--gris2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: none;
+    padding: 12px 20px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--gris4);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all var(--transition);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .tab:hover { color: var(--blanco); }
+  .tab.active {
+    color: var(--rojo);
+    border-bottom-color: var(--rojo);
+  }
+
+  /* ── PANEL ── */
+  .panel { display: none; padding: 16px 20px; }
+  .panel.active { display: block; }
+
+  /* ── CONTROLES MES ── */
+  .mes-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .mes-titulo {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--blanco);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .mes-btn {
+    background: var(--gris2);
+    border: 1px solid var(--gris3);
+    color: var(--blanco);
+    width: 32px; height: 32px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition);
+  }
+  .mes-btn:hover { background: var(--gris3); }
+
+  /* ── LEYENDA ── */
+  .leyenda {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .ley-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--gris4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .ley-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  /* ── GRILLA TURNOS ── */
+  .grilla-wrapper {
+    overflow-x: auto;
+    margin: 0 -20px;
+    padding: 0 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gris3) transparent;
+  }
+  .grilla {
+    min-width: 700px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--gris2);
+  }
+
+  /* Header días */
+  .grilla-header {
+    display: grid;
+    background: var(--gris1);
+    border-bottom: 1px solid var(--gris2);
+    position: sticky;
+    top: 0;
+  }
+  .grilla-header .col-nombre {
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gris4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-right: 1px solid var(--gris2);
+    min-width: 110px;
+  }
+  .grilla-header .col-dia {
+    padding: 6px 2px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--gris4);
+    text-align: center;
+    min-width: 28px;
+  }
+  .grilla-header .col-dia.domingo { color: var(--rojo); }
+  .grilla-header .col-dia .num-dia {
+    font-size: 11px;
+    color: var(--blanco);
+    display: block;
+    font-weight: 500;
+  }
+  .grilla-header .col-dia.hoy .num-dia {
+    color: var(--rojo);
+    font-weight: 700;
+  }
+
+  /* Filas personal */
+  .grilla-fila {
+    display: grid;
+    border-bottom: 1px solid var(--gris2);
+    transition: background var(--transition);
+  }
+  .grilla-fila:last-child { border-bottom: none; }
+  .grilla-fila:hover { background: rgba(255,255,255,0.02); }
+
+  .col-nombre {
+    padding: 8px 12px;
+    border-right: 1px solid var(--gris2);
+    min-width: 110px;
+  }
+  .nombre-principal {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--blanco);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+  }
+  .nombre-rol {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--gris4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+  .nombre-horas {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--oficial);
+    margin-top: 2px;
+  }
+  .nombre-horas.warning { color: var(--tarde); }
+  .nombre-horas.danger  { color: var(--ausente); }
+
+  /* Celdas turno */
+  .celda {
+    min-width: 28px;
+    height: 52px;
+    border-right: 1px solid rgba(58,58,94,0.3);
+    cursor: pointer;
+    position: relative;
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .celda:last-child { border-right: none; }
+  .celda:hover { background: rgba(233,69,96,0.1); }
+  .celda.domingo { background: rgba(233,69,96,0.04); }
+
+  .celda-inner {
+    width: 22px; height: 38px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 500;
+    transition: all var(--transition);
+  }
+  .celda-inner.vacia {
+    background: transparent;
+    color: transparent;
+  }
+  .celda-inner.oficial {
+    background: rgba(46,204,113,0.15);
+    color: var(--oficial);
+    border: 1px solid rgba(46,204,113,0.3);
+  }
+  .celda-inner.operativo {
+    background: rgba(243,156,18,0.15);
+    color: var(--operativo);
+    border: 1px solid rgba(243,156,18,0.3);
+  }
+  .celda-inner.ausente {
+    background: rgba(231,76,60,0.15);
+    color: var(--ausente);
+    border: 1px solid rgba(231,76,60,0.3);
+  }
+  .celda-inner.tarde {
+    background: rgba(230,126,34,0.15);
+    color: var(--tarde);
+    border: 1px solid rgba(230,126,34,0.3);
+  }
+  .celda-inner.permiso {
+    background: rgba(155,89,182,0.15);
+    color: var(--permiso);
+    border: 1px solid rgba(155,89,182,0.3);
+  }
+  .celda-inner.libre {
+    background: var(--libre);
+    color: var(--gris4);
+    border: 1px solid var(--gris3);
+  }
+  .turno-letra { font-size: 10px; font-weight: 700; }
+  .turno-sec   { font-size: 7px; opacity: 0.8; }
+
+  /* ── MODAL TURNO ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 200;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: 16px 16px 0 0;
+    padding: 24px 20px 32px;
+    width: 100%;
+    max-width: 480px;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .modal-titulo {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--gris4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .modal-nombre {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--blanco);
+    margin-bottom: 20px;
+  }
+  .modal-fecha {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--rojo);
+  }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gris4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .form-select, .form-input {
+    width: 100%;
+    background: var(--gris2);
+    border: 1px solid var(--gris3);
+    color: var(--blanco);
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    outline: none;
+    transition: border-color var(--transition);
+    appearance: none;
+  }
+  .form-select:focus, .form-input:focus {
+    border-color: var(--rojo);
+  }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .modo-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .modo-btn {
+    padding: 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--gris3);
+    background: var(--gris2);
+    color: var(--gris4);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all var(--transition);
+    text-align: center;
+  }
+  .modo-btn.oficial.active {
+    background: rgba(46,204,113,0.15);
+    border-color: var(--oficial);
+    color: var(--oficial);
+  }
+  .modo-btn.operativo.active {
+    background: rgba(243,156,18,0.15);
+    border-color: var(--operativo);
+    color: var(--operativo);
+  }
+
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .btn {
+    padding: 12px;
+    border-radius: var(--radius);
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .btn-cancelar {
+    background: var(--gris2);
+    color: var(--gris4);
+    border: 1px solid var(--gris3);
+  }
+  .btn-cancelar:hover { color: var(--blanco); }
+  .btn-guardar {
+    background: var(--rojo);
+    color: var(--blanco);
+  }
+  .btn-guardar:hover { opacity: 0.85; }
+  .btn-eliminar {
+    background: rgba(231,76,60,0.15);
+    color: var(--ausente);
+    border: 1px solid rgba(231,76,60,0.3);
+    grid-column: 1 / -1;
+    margin-top: -4px;
+  }
+
+  /* ── ESTADO RÁPIDO (vista CAP) ── */
+  .estado-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .estado-card {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .estado-card:hover { border-color: var(--gris3); }
+  .estado-dot-lg {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .estado-info { flex: 1; min-width: 0; }
+  .estado-nombre {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--blanco);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .estado-turno {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gris4);
+    margin-top: 2px;
+  }
+  .estado-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  /* ── LOGIN ── */
+  .login-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px 24px;
+    text-align: center;
+  }
+  .login-logo {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    color: var(--rojo);
+    margin-bottom: 8px;
+    letter-spacing: -1px;
+  }
+  .login-sub {
+    font-size: 14px;
+    color: var(--gris4);
+    margin-bottom: 40px;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .login-card {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: 16px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 320px;
+  }
+  .login-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .login-desc {
+    font-size: 13px;
+    color: var(--gris4);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+  .btn-google {
+    width: 100%;
+    background: var(--blanco);
+    color: var(--negro);
+    border: none;
+    padding: 13px 20px;
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: opacity var(--transition);
+  }
+  .btn-google:hover { opacity: 0.9; }
+  .btn-google svg { width: 18px; height: 18px; }
+
+  /* ── PERSONAL PANEL ── */
+  .personal-lista { display: flex; flex-direction: column; gap: 10px; }
+  .personal-card {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .personal-avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--gris2);
+    border: 1px solid var(--gris3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--rojo);
+    flex-shrink: 0;
+  }
+  .personal-info { flex: 1; min-width: 0; }
+  .personal-nombre {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--blanco);
+  }
+  .personal-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gris4);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .personal-acciones { display: flex; gap: 6px; }
+  .btn-mini {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    border: 1px solid var(--gris3);
+    background: var(--gris2);
+    color: var(--gris4);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition);
+  }
+  .btn-mini:hover { color: var(--blanco); border-color: var(--gris4); }
+
+  .btn-nuevo {
+    width: 100%;
+    background: transparent;
+    border: 1px dashed var(--gris3);
+    color: var(--gris4);
+    padding: 12px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all var(--transition);
+  }
+  .btn-nuevo:hover { border-color: var(--rojo); color: var(--rojo); }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    color: var(--blanco);
+    padding: 12px 20px;
+    border-radius: 50px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    z-index: 300;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.ok   { border-color: var(--oficial); color: var(--oficial); }
+  .toast.err  { border-color: var(--ausente); color: var(--ausente); }
+  .toast.warn { border-color: var(--tarde);   color: var(--tarde);   }
+
+  /* ── LOADING ── */
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    gap: 16px;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 2px solid var(--gris3);
+    border-top-color: var(--rojo);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-txt {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--gris4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── RESUMEN SEMANA ── */
+  .semana-card {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 10px;
+  }
+  .semana-nombre {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--blanco);
+    margin-bottom: 10px;
+  }
+  .semana-dias {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .semana-dia-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 36px;
+  }
+  .dia-label { color: var(--gris4); font-size: 9px; }
+
+  /* ── MODAL PERSONAL ── */
+  .modal-personal {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: 16px 16px 0 0;
+    padding: 24px 20px 32px;
+    width: 100%;
+    max-width: 480px;
+    animation: slideUp 0.25s ease;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  /* ── SCROLL INDICATOR ── */
+  .scroll-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--gris4);
+    text-align: center;
+    padding: 6px 0 2px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── ACCESO DENEGADO ── */
+  .acceso-denegado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    padding: 40px 24px;
+    text-align: center;
+    gap: 12px;
+  }
+  .acceso-denegado .icono { font-size: 48px; }
+  .acceso-denegado h2 { font-size: 20px; color: var(--rojo); }
+  .acceso-denegado p  { font-size: 13px; color: var(--gris4); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     LOGIN SCREEN
+══════════════════════════════════════ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-logo">PINSA</div>
+  <div class="login-sub">Gestión de Turnos</div>
+  <div class="login-card">
+    <div class="login-title">Acceso operadores</div>
+    <div class="login-desc">Inicia sesión con tu cuenta Google autorizada para gestionar turnos.</div>
+    <button class="btn-google" onclick="iniciarSesion()">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+      </svg>
+      Continuar con Google
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     APP PRINCIPAL
+══════════════════════════════════════ -->
+<div id="appMain" style="display:none;">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">PINSA</div>
+      <div class="local-badge" id="localBadge">—</div>
+    </div>
+    <div class="user-info">
+      <div id="userName">—</div>
+      <div class="user-rol" id="userRol">—</div>
+    </div>
+  </div>
+
+  <!-- NAV TABS -->
+  <div class="nav-tabs" id="navTabs">
+    <div class="tab active" onclick="cambiarTab('turnosMes')"  id="tab-turnosMes">Turnos mes</div>
+    <div class="tab"        onclick="cambiarTab('hoy')"        id="tab-hoy">Hoy</div>
+    <div class="tab"        onclick="cambiarTab('semana')"     id="tab-semana">Semana</div>
+    <div class="tab jl-only" onclick="cambiarTab('personal')"  id="tab-personal">Personal</div>
+  </div>
+
+  <!-- ── PANEL: TURNOS MES ── -->
+  <div class="panel active" id="panel-turnosMes">
+
+    <div class="mes-nav">
+      <button class="mes-btn" onclick="cambiarMes(-1)">‹</button>
+      <div class="mes-titulo" id="mesTitulo">—</div>
+      <button class="mes-btn" onclick="cambiarMes(1)">›</button>
+    </div>
+
+    <div class="leyenda">
+      <div class="ley-item"><div class="ley-dot" style="background:var(--oficial)"></div> Oficial</div>
+      <div class="ley-item"><div class="ley-dot" style="background:var(--operativo)"></div> Operativo</div>
+      <div class="ley-item"><div class="ley-dot" style="background:var(--ausente)"></div> Ausente</div>
+      <div class="ley-item"><div class="ley-dot" style="background:var(--tarde)"></div> Tarde</div>
+      <div class="ley-item"><div class="ley-dot" style="background:var(--permiso)"></div> Permiso</div>
+      <div class="ley-item"><div class="ley-dot" style="background:var(--gris3)"></div> Libre</div>
+    </div>
+
+    <div class="scroll-hint">← desliza para ver el mes completo →</div>
+
+    <div class="grilla-wrapper">
+      <div class="grilla" id="grillaTurnos">
+        <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando turnos...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PANEL: HOY ── -->
+  <div class="panel" id="panel-hoy">
+    <div class="mes-nav" style="margin-bottom:20px;">
+      <div class="mes-titulo" id="hoyTitulo">—</div>
+      <button class="btn" style="padding:8px 14px;font-size:11px;" onclick="cargarHoy()">↺</button>
+    </div>
+    <div id="estadoGrid" class="estado-grid">
+      <div class="loading" style="grid-column:1/-1"><div class="spinner"></div><div class="loading-txt">Cargando...</div></div>
+    </div>
+  </div>
+
+  <!-- ── PANEL: SEMANA ── -->
+  <div class="panel" id="panel-semana">
+    <div class="mes-nav" style="margin-bottom:20px;">
+      <button class="mes-btn" onclick="cambiarSemana(-1)">‹</button>
+      <div class="mes-titulo" id="semanaTitulo">—</div>
+      <button class="mes-btn" onclick="cambiarSemana(1)">›</button>
+    </div>
+    <div id="semanaContenido">
+      <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando semana...</div></div>
+    </div>
+    <button class="btn-nuevo" style="margin-top:16px;" onclick="compartirSemana()">
+      📤 Compartir semana por WhatsApp
+    </button>
+  </div>
+
+  <!-- ── PANEL: PERSONAL ── -->
+  <div class="panel" id="panel-personal">
+    <div id="personalLista" class="personal-lista">
+      <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando personal...</div></div>
+    </div>
+    <button class="btn-nuevo" onclick="abrirModalPersonal(null)">+ Agregar persona</button>
+  </div>
+
+</div><!-- fin appMain -->
+
+<!-- ══════════════════════════════════════
+     MODAL TURNO
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="modalTurno" onclick="cerrarModal(event)">
+  <div class="modal">
+    <div class="modal-titulo" id="modalFecha">—</div>
+    <div class="modal-nombre" id="modalNombre">—</div>
+
+    <div class="form-group">
+      <label class="form-label">Turno</label>
+      <select class="form-select" id="selTurno" onchange="actualizarHoras()">
+        <option value="">— Sin turno (día libre) —</option>
+        <option value="M">Mañana</option>
+        <option value="T">Tarde</option>
+        <option value="C">Completo</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="rowHoras">
+      <div class="form-group">
+        <label class="form-label">Entrada</label>
+        <input type="time" class="form-input" id="inputEntrada" value="08:00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Salida</label>
+        <input type="time" class="form-input" id="inputSalida" value="15:00">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Sección</label>
+      <select class="form-select" id="selSeccion">
+        <option value="">— Sin asignar —</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Estado</label>
+      <select class="form-select" id="selEstado">
+        <option value="NORMAL">Normal</option>
+        <option value="TARDE">Llegada tarde</option>
+        <option value="AUSENTE">Ausente</option>
+        <option value="PERMISO">Permiso</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Modo</label>
+      <div class="modo-toggle">
+        <button class="modo-btn oficial active" id="btnOficial" onclick="setModo('OFICIAL')">
+          ✓ Oficial
+        </button>
+        <button class="modo-btn operativo" id="btnOperativo" onclick="setModo('OPERATIVO')">
+          ◎ Operativo
+        </button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notas (opcional)</label>
+      <input type="text" class="form-input" id="inputNotas" placeholder="Ej: cubre a Pedro">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancelar" onclick="cerrarModalBtn()">Cancelar</button>
+      <button class="btn btn-guardar"  onclick="guardarTurno()">Guardar</button>
+      <button class="btn btn-eliminar" id="btnEliminar" onclick="eliminarTurno()" style="display:none;">
+        Quitar turno
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL PERSONAL
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="modalPersonal" onclick="cerrarModalPersonal(event)">
+  <div class="modal-personal">
+    <div class="modal-titulo">Datos del trabajador</div>
+    <div class="modal-nombre" id="modalPersonalTitulo">Nuevo</div>
+
+    <div class="form-group">
+      <label class="form-label">Nombre completo</label>
+      <input type="text" class="form-input" id="pNombre" placeholder="Ej: Alejandro Velez">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Alias operativo (opcional)</label>
+      <input type="text" class="form-input" id="pAlias" placeholder="Ej: Alex, REFUERZO-1">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Rol</label>
+        <select class="form-select" id="pRol">
+          <option value="MOZO">Mozo</option>
+          <option value="BARTENDER">Bartender</option>
+          <option value="COCINA">Cocina</option>
+          <option value="CAJA">Caja</option>
+          <option value="CAP_AM">Capitán AM</option>
+          <option value="CAP_PM">Capitán PM</option>
+          <option value="JL">Jefe de Local</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contrato</label>
+        <select class="form-select" id="pContrato">
+          <option value="FULL">Full time</option>
+          <option value="PART">Part time</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Horas/semana</label>
+        <input type="number" class="form-input" id="pHoras" value="45" min="1" max="45">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sección default</label>
+        <select class="form-select" id="pSeccion"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Teléfono (WhatsApp)</label>
+      <input type="tel" class="form-input" id="pTelefono" placeholder="+56 9 XXXX XXXX">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancelar" onclick="cerrarModalPersonalBtn()">Cancelar</button>
+      <button class="btn btn-guardar"  onclick="guardarPersonal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">—</div>
+
+<script>
+// ══════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxV1iza1ee0keqQAqfwysVW38zzsntMDlUiHREbllH5YeKAZuE3wWJ7mqeQY2iFe_I/exec';
+
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DIAS_ES  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+// Estado global
+let LOCAL       = new URLSearchParams(location.search).get('local') || 'bks';
+let userEmail   = '';
+let userRol     = '';        // JL | CAP | READONLY
+let parametros  = {};
+let personal    = [];
+let turnosMes   = [];
+let secciones   = [];
+
+let mesActual   = new Date().getMonth() + 1;
+let anioActual  = new Date().getFullYear();
+let semanaActual= getLunes(new Date());
+
+// Modal state
+let modalData   = { id_personal: null, fecha: null, turnoExistente: null };
+let modoActual  = 'OFICIAL';
+let personalEditando = null;
+
+// ══════════════════════════════════════
+// LOGIN GOOGLE
+// ══════════════════════════════════════
+function iniciarSesion() {
+  // Simular Google OAuth — en producción usar Google Identity Services
+  const email = prompt('Ingresa tu email Google autorizado:');
+  if (!email) return;
+  procesarLogin(email.trim().toLowerCase());
+}
+
+function procesarLogin(email) {
+  userEmail = email;
+  const admins = (parametros.ROLES_ADMIN || '').toLowerCase().split(',').map(e=>e.trim());
+  const caps   = (parametros.ROLES_CAP   || '').toLowerCase().split(',').map(e=>e.trim());
+
+  if (admins.includes(email)) {
+    userRol = 'JL';
+  } else if (caps.includes(email)) {
+    userRol = 'CAP';
+  } else {
+    mostrarAccesoDenegado(email);
+    return;
+  }
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appMain').style.display = 'block';
+  document.getElementById('userName').textContent = email.split('@')[0];
+  document.getElementById('userRol').textContent  = userRol;
+  document.getElementById('localBadge').textContent = LOCAL.toUpperCase();
+
+  // Ocultar tabs según rol
+  if (userRol === 'CAP') {
+    document.querySelectorAll('.jl-only').forEach(el => el.style.display = 'none');
+  }
+
+  cargarTurnosMes();
+  cargarHoy();
+}
+
+function mostrarAccesoDenegado(email) {
+  document.getElementById('loginScreen').innerHTML = `
+    <div class="acceso-denegado">
+      <div class="icono">🔒</div>
+      <h2>Acceso no autorizado</h2>
+      <p>${email} no está en la lista de operadores autorizados para <strong>${LOCAL.toUpperCase()}</strong>.</p>
+      <p style="margin-top:12px;font-size:12px;">Contacta al JL para que te agregue en CONFIG_LOCAL.</p>
+      <button class="btn btn-cancelar" style="margin-top:24px;padding:12px 24px;" onclick="location.reload()">Volver</button>
+    </div>`;
+}
+
+// ══════════════════════════════════════
+// CARGA INICIAL — PARÁMETROS
+// ══════════════════════════════════════
+async function init() {
+  try {
+    const res = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getParametros`);
+    const data = await res.json();
+    if (data.ok) {
+      parametros = data.parametros;
+      secciones  = (parametros.SECCIONES || '').split(',').map(s=>s.trim()).filter(Boolean);
+    }
+  } catch(e) {
+    console.error('Error cargando parámetros:', e);
+  }
+}
+
+// ══════════════════════════════════════
+// TURNOS MES — GRILLA
+// ══════════════════════════════════════
+async function cargarTurnosMes() {
+  document.getElementById('grillaTurnos').innerHTML =
+    '<div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando turnos...</div></div>';
+
+  try {
+    const [resPersonal, resTurnos] = await Promise.all([
+      fetch(`${GAS_URL}?local=${LOCAL}&accion=getPersonal`).then(r=>r.json()),
+      fetch(`${GAS_URL}?local=${LOCAL}&accion=getTurnos&mes=${mesActual}&anio=${anioActual}`).then(r=>r.json())
+    ]);
+
+    personal   = resPersonal.personal  || [];
+    turnosMes  = resTurnos.turnos      || [];
+
+    renderGrilla();
+    document.getElementById('mesTitulo').textContent = `${MESES_ES[mesActual-1]} ${anioActual}`;
+  } catch(e) {
+    document.getElementById('grillaTurnos').innerHTML =
+      '<div class="loading"><div class="loading-txt" style="color:var(--ausente)">Error al cargar</div></div>';
+  }
+}
+
+function renderGrilla() {
+  const diasEnMes = new Date(anioActual, mesActual, 0).getDate();
+  const hoy = new Date();
+  const grilla = document.getElementById('grillaTurnos');
+
+  // Calcular columnas
+  const totalCols = 1 + diasEnMes;
+  const colWidth  = `110px repeat(${diasEnMes}, 28px)`;
+
+  // Header días
+  let headerHtml = `<div class="grilla-header" style="grid-template-columns:${colWidth}">
+    <div class="col-nombre">Personal</div>`;
+
+  for (let d = 1; d <= diasEnMes; d++) {
+    const fecha  = new Date(anioActual, mesActual - 1, d);
+    const diaSem = fecha.getDay();
+    const esHoy  = fecha.toDateString() === hoy.toDateString();
+    headerHtml  += `<div class="col-dia${diaSem===0?' domingo':''}${esHoy?' hoy':''}">
+      <span class="num-dia">${d}</span>
+      ${DIAS_ES[diaSem].charAt(0)}
+    </div>`;
+  }
+  headerHtml += '</div>';
+
+  // Filas personal
+  let filasHtml = '';
+  personal.forEach(p => {
+    const turnosP = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
+    const horasSem = calcularHorasSemanales(turnosP);
+    const maxHoras = parseFloat(parametros.HORAS_MAX_SEMANA) || 45;
+    const pct      = horasSem / maxHoras;
+    const horasClass = pct >= 1 ? 'danger' : pct >= 0.85 ? 'warning' : '';
+
+    const iniciales = (p.NOMBRE||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+
+    filasHtml += `<div class="grilla-fila" style="grid-template-columns:${colWidth}">
+      <div class="col-nombre">
+        <div class="nombre-principal" title="${p.NOMBRE}">${p.NOMBRE}</div>
+        <div class="nombre-rol">${p.ROL||''}</div>
+        <div class="nombre-horas ${horasClass}">${horasSem}h/${maxHoras}h</div>
+      </div>`;
+
+    for (let d = 1; d <= diasEnMes; d++) {
+      const fecha     = new Date(anioActual, mesActual - 1, d);
+      const fechaStr  = formatFecha(fecha);
+      const esDomingo = fecha.getDay() === 0;
+      const turno     = turnosP.find(t => t.FECHA === fechaStr);
+
+      let innerClass = 'vacia';
+      let letra = '', sec = '';
+
+      if (turno) {
+        const modo   = (turno.MODO||'OFICIAL').toLowerCase();
+        const estado = (turno.ESTADO||'NORMAL').toLowerCase();
+        if (estado === 'ausente')       innerClass = 'ausente';
+        else if (estado === 'tarde')    innerClass = 'tarde';
+        else if (estado === 'permiso')  innerClass = 'permiso';
+        else if (modo === 'operativo')  innerClass = 'operativo';
+        else                            innerClass = 'oficial';
+        letra = turno.TURNO || '?';
+        sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
+      }
+
+      const onclick = userRol !== 'READONLY'
+        ? `onclick="abrirModalTurno('${p.ID_PERSONAL}','${p.NOMBRE}','${fechaStr}')"`
+        : '';
+
+      filasHtml += `<div class="celda${esDomingo?' domingo':''}" ${onclick}>
+        <div class="celda-inner ${innerClass}">
+          <span class="turno-letra">${letra}</span>
+          <span class="turno-sec">${sec}</span>
+        </div>
+      </div>`;
+    }
+    filasHtml += '</div>';
+  });
+
+  grilla.innerHTML = headerHtml + filasHtml;
+}
+
+// ══════════════════════════════════════
+// PANEL HOY
+// ══════════════════════════════════════
+async function cargarHoy() {
+  const hoy = new Date();
+  document.getElementById('hoyTitulo').textContent =
+    `${DIAS_ES[hoy.getDay()]} ${hoy.getDate()} ${MESES_ES[hoy.getMonth()]}`;
+
+  const fechaStr = formatFecha(hoy);
+  const turnosHoy = turnosMes.filter(t => t.FECHA === fechaStr);
+  const grid = document.getElementById('estadoGrid');
+
+  if (turnosHoy.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--gris4);padding:40px;font-family:var(--font-mono);font-size:12px;">Sin turnos asignados para hoy</div>';
+    return;
+  }
+
+  grid.innerHTML = turnosHoy.map(t => {
+    const estado  = t.ESTADO || 'NORMAL';
+    const color   = getColorEstado(estado);
+    const badgeStyle = `background:${color}22;color:${color};`;
+    return `<div class="estado-card" onclick="abrirModalEstado('${t.ID_TURNO}','${t.NOMBRE}','${estado}')">
+      <div class="estado-dot-lg" style="background:${color}"></div>
+      <div class="estado-info">
+        <div class="estado-nombre">${t.NOMBRE}</div>
+        <div class="estado-turno">${t.TURNO||'—'} · ${t.SECCION||'—'} · ${t.HORA_ENTRADA||''}–${t.HORA_SALIDA||''}</div>
+      </div>
+      <div class="estado-badge" style="${badgeStyle}">${estado}</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════
+// PANEL SEMANA
+// ══════════════════════════════════════
+async function cargarSemana() {
+  document.getElementById('semanaTitulo').textContent =
+    `Sem. ${formatFechaCorta(semanaActual)}`;
+
+  const fechaFin = new Date(semanaActual);
+  fechaFin.setDate(fechaFin.getDate() + 6);
+
+  try {
+    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getResumenSemana&fecha_inicio=${formatFecha(semanaActual)}`);
+    const data = await res.json();
+    renderSemana(data.semana || {});
+  } catch(e) {
+    document.getElementById('semanaContenido').innerHTML =
+      '<div style="color:var(--ausente);font-size:12px;text-align:center;padding:20px;">Error al cargar</div>';
+  }
+}
+
+function renderSemana(semana) {
+  const contenido = document.getElementById('semanaContenido');
+  const nombres   = Object.keys(semana);
+
+  if (nombres.length === 0) {
+    contenido.innerHTML = '<div style="text-align:center;color:var(--gris4);padding:40px;font-family:var(--font-mono);font-size:12px;">Sin turnos esta semana</div>';
+    return;
+  }
+
+  contenido.innerHTML = nombres.map(nombre => {
+    const dias = semana[nombre];
+    const chipsHtml = dias.map(d => {
+      const color = getColorEstado(d.estado || 'NORMAL');
+      return `<div class="semana-dia-chip" style="background:${color}18;border:1px solid ${color}44;">
+        <span style="color:${color};font-size:11px;font-weight:700;">${d.turno||'?'}</span>
+        <span class="dia-label">${d.fecha}</span>
+        <span style="font-size:8px;color:var(--gris4);">${d.seccion||'—'}</span>
+      </div>`;
+    }).join('');
+
+    return `<div class="semana-card">
+      <div class="semana-nombre">${nombre}</div>
+      <div class="semana-dias">${chipsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function compartirSemana() {
+  const fechaFin = new Date(semanaActual);
+  fechaFin.setDate(fechaFin.getDate() + 6);
+  const texto = `Turnos ${LOCAL.toUpperCase()} — Semana ${formatFechaCorta(semanaActual)} al ${formatFechaCorta(fechaFin)}\n\n` +
+    `Ver turno completo: ${location.href}`;
+  const url = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+  window.open(url, '_blank');
+}
+
+// ══════════════════════════════════════
+// PANEL PERSONAL
+// ══════════════════════════════════════
+async function cargarPersonal() {
+  try {
+    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getPersonal`);
+    const data = await res.json();
+    personal   = data.personal || [];
+    renderPersonal();
+  } catch(e) {
+    mostrarToast('Error al cargar personal', 'err');
+  }
+}
+
+function renderPersonal() {
+  const lista = document.getElementById('personalLista');
+  if (personal.length === 0) {
+    lista.innerHTML = '<div style="text-align:center;color:var(--gris4);padding:40px;font-family:var(--font-mono);font-size:12px;">Sin personal registrado</div>';
+    return;
+  }
+  lista.innerHTML = personal.map(p => {
+    const iniciales = (p.NOMBRE||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+    return `<div class="personal-card">
+      <div class="personal-avatar">${iniciales}</div>
+      <div class="personal-info">
+        <div class="personal-nombre">${p.NOMBRE}</div>
+        <div class="personal-meta">${p.ROL||'—'} · ${p.TIPO_CONTRATO||'—'} · ${p.HORAS_SEMANALES||45}h/sem</div>
+        ${p.ALIAS ? `<div class="personal-meta" style="color:var(--operativo)">alias: ${p.ALIAS}</div>` : ''}
+      </div>
+      <div class="personal-acciones">
+        <button class="btn-mini" onclick="abrirModalPersonal('${p.ID_PERSONAL}')" title="Editar">✏️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════
+// MODAL TURNO
+// ══════════════════════════════════════
+function abrirModalTurno(id_personal, nombre, fechaStr) {
+  const turno = turnosMes.find(t => t.ID_PERSONAL == id_personal && t.FECHA === fechaStr);
+  modalData   = { id_personal, fecha: fechaStr, turnoExistente: turno || null };
+
+  const fecha = new Date(fechaStr + 'T12:00:00');
+  document.getElementById('modalFecha').textContent   = `${DIAS_ES[fecha.getDay()]} ${fecha.getDate()} ${MESES_ES[fecha.getMonth()]}`;
+  document.getElementById('modalNombre').textContent  = nombre;
+  document.getElementById('selTurno').value           = turno?.TURNO || '';
+  document.getElementById('inputEntrada').value       = turno?.HORA_ENTRADA || '08:00';
+  document.getElementById('inputSalida').value        = turno?.HORA_SALIDA  || '15:00';
+  document.getElementById('inputNotas').value         = turno?.NOTAS || '';
+  document.getElementById('selEstado').value          = turno?.ESTADO || 'NORMAL';
+  document.getElementById('btnEliminar').style.display = turno ? 'block' : 'none';
+
+  setModo(turno?.MODO || 'OFICIAL');
+  poblarSecciones('selSeccion');
+  document.getElementById('selSeccion').value = turno?.SECCION || '';
+  document.getElementById('modalTurno').classList.add('open');
+}
+
+function cerrarModal(e) {
+  if (e.target === document.getElementById('modalTurno')) cerrarModalBtn();
+}
+function cerrarModalBtn() {
+  document.getElementById('modalTurno').classList.remove('open');
+}
+
+function setModo(modo) {
+  modoActual = modo;
+  document.getElementById('btnOficial').classList.toggle('active',   modo === 'OFICIAL');
+  document.getElementById('btnOperativo').classList.toggle('active', modo === 'OPERATIVO');
+}
+
+function actualizarHoras() {
+  const turno  = document.getElementById('selTurno').value;
+  const hE     = document.getElementById('inputEntrada');
+  const hS     = document.getElementById('inputSalida');
+  const params = parametros;
+
+  if (turno === 'M') {
+    const [e,s] = (params.HORAS_TURNO_MANANA   || '08:00-15:00').split('-');
+    hE.value = e; hS.value = s;
+  } else if (turno === 'T') {
+    const [e,s] = (params.HORAS_TURNO_TARDE    || '15:00-23:00').split('-');
+    hE.value = e; hS.value = s;
+  } else if (turno === 'C') {
+    const [e,s] = (params.HORAS_TURNO_COMPLETO || '08:00-23:00').split('-');
+    hE.value = e; hS.value = s;
+  }
+}
+
+async function guardarTurno() {
+  const p = personal.find(p => p.ID_PERSONAL == modalData.id_personal);
+  if (!p) return;
+
+  const payload = {
+    local:        LOCAL,
+    accion:       'guardarTurno',
+    fecha:        modalData.fecha,
+    id_personal:  modalData.id_personal,
+    nombre:       modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE,
+    turno:        document.getElementById('selTurno').value,
+    hora_entrada: document.getElementById('inputEntrada').value,
+    hora_salida:  document.getElementById('inputSalida').value,
+    seccion:      document.getElementById('selSeccion').value,
+    estado:       document.getElementById('selEstado').value,
+    modo:         modoActual,
+    notas:        document.getElementById('inputNotas').value
+  };
+
+  if (!payload.turno) {
+    mostrarToast('Sin turno asignado — día libre', 'warn');
+    cerrarModalBtn();
+    return;
+  }
+
+  try {
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarToast('Turno guardado ✓', 'ok');
+      cerrarModalBtn();
+      cargarTurnosMes();
+    } else {
+      mostrarToast(data.error || 'Error al guardar', 'err');
+    }
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+}
+
+async function eliminarTurno() {
+  if (!modalData.turnoExistente?.ID_TURNO) return;
+  // Marcar como eliminado via estado AUSENTE + nota
+  const payload = {
+    local:    LOCAL,
+    accion:   'marcarEstado',
+    id_turno: modalData.turnoExistente.ID_TURNO,
+    estado:   'AUSENTE',
+    notas:    'Turno eliminado por ' + userEmail
+  };
+  try {
+    await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    mostrarToast('Turno eliminado', 'warn');
+    cerrarModalBtn();
+    cargarTurnosMes();
+  } catch(e) {
+    mostrarToast('Error', 'err');
+  }
+}
+
+// Modal estado rápido (vista CAP)
+function abrirModalEstado(id_turno, nombre, estadoActual) {
+  if (userRol === 'READONLY') return;
+  const nuevo = prompt(`Estado de ${nombre}:\n1=NORMAL  2=TARDE  3=AUSENTE  4=PERMISO\nActual: ${estadoActual}\n\nIngresa número:`);
+  const map   = { '1':'NORMAL', '2':'TARDE', '3':'AUSENTE', '4':'PERMISO' };
+  if (!map[nuevo]) return;
+  cambiarEstadoDirecto(id_turno, nombre, map[nuevo]);
+}
+
+async function cambiarEstadoDirecto(id_turno, nombre, estado) {
+  const payload = { local: LOCAL, accion: 'marcarEstado', id_turno, estado, notas: '' };
+  try {
+    await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    mostrarToast(`${nombre} → ${estado}`, 'ok');
+    cargarHoy();
+    if (mesActual === new Date().getMonth() + 1) cargarTurnosMes();
+  } catch(e) {
+    mostrarToast('Error', 'err');
+  }
+}
+
+// ══════════════════════════════════════
+// MODAL PERSONAL
+// ══════════════════════════════════════
+function abrirModalPersonal(id) {
+  if (userRol !== 'JL') return;
+  personalEditando = id;
+  const p = id ? personal.find(p => p.ID_PERSONAL == id) : null;
+
+  document.getElementById('modalPersonalTitulo').textContent = p ? p.NOMBRE : 'Nueva persona';
+  document.getElementById('pNombre').value    = p?.NOMBRE    || '';
+  document.getElementById('pAlias').value     = p?.ALIAS     || '';
+  document.getElementById('pRol').value       = p?.ROL       || 'MOZO';
+  document.getElementById('pContrato').value  = p?.TIPO_CONTRATO || 'FULL';
+  document.getElementById('pHoras').value     = p?.HORAS_SEMANALES || 45;
+  document.getElementById('pTelefono').value  = p?.TELEFONO  || '';
+
+  poblarSecciones('pSeccion');
+  document.getElementById('pSeccion').value = p?.SECCION_DEFAULT || '';
+  document.getElementById('modalPersonal').classList.add('open');
+}
+
+function cerrarModalPersonal(e) {
+  if (e.target === document.getElementById('modalPersonal')) cerrarModalPersonalBtn();
+}
+function cerrarModalPersonalBtn() {
+  document.getElementById('modalPersonal').classList.remove('open');
+}
+
+async function guardarPersonal() {
+  const nombre = document.getElementById('pNombre').value.trim();
+  if (!nombre) { mostrarToast('Ingresa un nombre', 'err'); return; }
+
+  const payload = {
+    local:           LOCAL,
+    accion:          'guardarPersonal',
+    id_personal:     personalEditando,
+    nombre,
+    alias:           document.getElementById('pAlias').value.trim(),
+    rol:             document.getElementById('pRol').value,
+    tipo_contrato:   document.getElementById('pContrato').value,
+    horas_semanales: parseInt(document.getElementById('pHoras').value),
+    seccion_default: document.getElementById('pSeccion').value,
+    local_val:       LOCAL.toUpperCase(),
+    activo:          true,
+    telefono:        document.getElementById('pTelefono').value.trim()
+  };
+
+  try {
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarToast(data.accion === 'creado' ? 'Persona agregada ✓' : 'Actualizado ✓', 'ok');
+      cerrarModalPersonalBtn();
+      cargarPersonal();
+    } else {
+      mostrarToast(data.error || 'Error', 'err');
+    }
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+}
+
+// ══════════════════════════════════════
+// NAVEGACIÓN
+// ══════════════════════════════════════
+function cambiarTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('panel-' + tab).classList.add('active');
+
+  if (tab === 'turnosMes') cargarTurnosMes();
+  if (tab === 'hoy')       cargarHoy();
+  if (tab === 'semana')    cargarSemana();
+  if (tab === 'personal')  cargarPersonal();
+}
+
+function cambiarMes(dir) {
+  mesActual += dir;
+  if (mesActual > 12) { mesActual = 1;  anioActual++; }
+  if (mesActual < 1)  { mesActual = 12; anioActual--; }
+  cargarTurnosMes();
+}
+
+function cambiarSemana(dir) {
+  semanaActual = new Date(semanaActual);
+  semanaActual.setDate(semanaActual.getDate() + dir * 7);
+  cargarSemana();
+}
+
+// ══════════════════════════════════════
+// UTILIDADES
+// ══════════════════════════════════════
+function getLunes(fecha) {
+  const d   = new Date(fecha);
+  const dia = d.getDay();
+  d.setDate(d.getDate() - (dia === 0 ? 6 : dia - 1));
+  d.setHours(0,0,0,0);
+  return d;
+}
+
+function formatFecha(fecha) {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth()+1).padStart(2,'0');
+  const d = String(fecha.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatFechaCorta(fecha) {
+  return `${fecha.getDate()}/${fecha.getMonth()+1}`;
+}
+
+function calcularHorasSemanales(turnos) {
+  const ahora      = new Date();
+  const lunesHoy   = getLunes(ahora);
+  const viernesHoy = new Date(lunesHoy); viernesHoy.setDate(viernesHoy.getDate()+6);
+  let total = 0;
+  turnos.forEach(t => {
+    const f = new Date(t.FECHA + 'T12:00:00');
+    if (f >= lunesHoy && f <= viernesHoy && t.ESTADO !== 'AUSENTE') {
+      if (t.HORA_ENTRADA && t.HORA_SALIDA) {
+        const [hE, mE] = t.HORA_ENTRADA.split(':').map(Number);
+        const [hS, mS] = t.HORA_SALIDA.split(':').map(Number);
+        total += Math.max(0, ((hS*60+mS)-(hE*60+mE))/60);
+      }
+    }
+  });
+  return Math.round(total * 10) / 10;
+}
+
+function getColorEstado(estado) {
+  const map = {
+    'NORMAL':  'var(--oficial)',
+    'TARDE':   'var(--tarde)',
+    'AUSENTE': 'var(--ausente)',
+    'PERMISO': 'var(--permiso)'
+  };
+  return map[estado] || 'var(--gris4)';
+}
+
+function poblarSecciones(selectId) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">— Sin asignar —</option>';
+  secciones.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    sel.appendChild(opt);
+  });
+}
+
+function mostrarToast(msg, tipo='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `toast ${tipo} show`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ══════════════════════════════════════
+// ARRANQUE
+// ══════════════════════════════════════
+init();
+</script>
+</body>
+</html>
