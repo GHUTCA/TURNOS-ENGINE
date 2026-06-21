@@ -882,20 +882,18 @@
       <label class="form-label">Turno</label>
       <select class="form-select" id="selTurno" onchange="actualizarHoras()">
         <option value="">— Sin turno (día libre) —</option>
-        <option value="M">Mañana</option>
-        <option value="T">Tarde</option>
-        <option value="C">Completo</option>
+        <!-- opciones generadas dinámicamente desde PARAMETROS (HORAS_TURNO_*) -->
       </select>
     </div>
 
     <div class="form-row" id="rowHoras">
       <div class="form-group">
         <label class="form-label">Entrada</label>
-        <input type="time" class="form-input" id="inputEntrada" value="08:00">
+        <input type="time" class="form-input" id="inputEntrada" value="">
       </div>
       <div class="form-group">
         <label class="form-label">Salida</label>
-        <input type="time" class="form-input" id="inputSalida" value="15:00">
+        <input type="time" class="form-input" id="inputSalida" value="">
       </div>
     </div>
 
@@ -1094,10 +1092,87 @@ async function init() {
     if (data.ok) {
       parametros = data.parametros;
       secciones  = (parametros.SECCIONES || '').split(',').map(s=>s.trim()).filter(Boolean);
+      construirTurnos();
     }
   } catch(e) {
     console.error('Error cargando parámetros:', e);
   }
+}
+
+// ══════════════════════════════════════
+// TURNOS DINÁMICOS — leídos de PARAMETROS (HORAS_TURNO_*)
+// Regla: cada clave HORAS_TURNO_<X> = un turno, EXCEPTO COMPLETO
+// (COMPLETO no es un turno, es el horario de apertura del local).
+// El valor guardado en TURNOS.TURNO es el nombre <X> (APERTURA, INTERMEDIO...).
+// ══════════════════════════════════════
+let turnosDef = [];   // [{codigo, label, entrada, salida}]
+
+const TURNO_LABELS = {
+  MANANA:    'Mañana / Apertura',
+  APERTURA:  'Apertura',
+  INTERMEDIO:'Intermedio',
+  TARDE:     'Tarde / Cierre',
+  CIERRE:    'Cierre',
+  NOCHE:     'Noche'
+};
+
+function construirTurnos() {
+  turnosDef = [];
+  Object.keys(parametros || {}).forEach(k => {
+    const m = k.match(/^HORAS_TURNO_(.+)$/);
+    if (!m) return;
+    const codigo = m[1].toUpperCase();
+    if (codigo === 'COMPLETO') return;          // horario del local, no turno
+    const val = String(parametros[k] || '').trim();
+    const [entrada, salida] = val.split('-').map(s => s.trim());
+    if (!entrada || !salida) return;
+    turnosDef.push({
+      codigo,
+      label: TURNO_LABELS[codigo] || (codigo.charAt(0) + codigo.slice(1).toLowerCase()),
+      entrada, salida
+    });
+  });
+  // orden por hora de entrada
+  turnosDef.sort((a,b) => a.entrada.localeCompare(b.entrada));
+  poblarSelectTurnos();
+}
+
+function poblarSelectTurnos() {
+  const sel = document.getElementById('selTurno');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Sin turno (día libre) —</option>' +
+    turnosDef.map(t => `<option value="${t.codigo}">${t.label} · ${t.entrada}-${t.salida}</option>`).join('');
+}
+
+// Abrevia el código de turno a 1 letra para la celda de la grilla.
+// Retrocompatible con códigos viejos M/T/C (BKS) y nuevos (APERTURA, INTERMEDIO...).
+// Mapea códigos viejos M/T/C al código nuevo disponible en turnosDef,
+// para que el dropdown seleccione la opción correcta al abrir un turno existente.
+function normalizarCodTurno(cod) {
+  if (!cod) return '';
+  const c = String(cod).toUpperCase();
+  // si ya existe tal cual en los turnos definidos, úsalo
+  if (turnosDef.some(t => t.codigo === c)) return c;
+  // retrocompat: M→apertura/mañana, T→tarde/cierre, C→completo (ya no es turno)
+  const buscar = {
+    M: ['MANANA','APERTURA'],
+    T: ['TARDE','CIERRE'],
+    C: ['COMPLETO']
+  }[c] || [];
+  for (const cand of buscar) {
+    if (turnosDef.some(t => t.codigo === cand)) return cand;
+  }
+  return '';   // no encontrado → "día libre" (fallback seguro)
+}
+
+function abreviarTurno(cod) {
+  if (!cod) return '?';
+  const c = String(cod).toUpperCase();
+  const legacy = { M:'M', T:'T', C:'C' };
+  if (legacy[c]) return legacy[c];
+  // nuevo esquema: primera letra del nombre del turno
+  if (c === 'INTERMEDIO') return 'I';
+  return c.charAt(0);
 }
 
 // ══════════════════════════════════════
@@ -1183,7 +1258,7 @@ function renderGrilla() {
         else if (estado === 'permiso')  innerClass = 'permiso';
         else if (modo === 'operativo')  innerClass = 'operativo';
         else                            innerClass = 'oficial';
-        letra = turno.TURNO || '?';
+        letra = abreviarTurno(turno.TURNO);
         sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
       }
 
@@ -1338,9 +1413,9 @@ function abrirModalTurno(id_personal, nombre, fechaStr) {
   const fecha = new Date(fechaStr + 'T12:00:00');
   document.getElementById('modalFecha').textContent   = `${DIAS_ES[fecha.getDay()]} ${fecha.getDate()} ${MESES_ES[fecha.getMonth()]}`;
   document.getElementById('modalNombre').textContent  = nombre;
-  document.getElementById('selTurno').value           = turno?.TURNO || '';
-  document.getElementById('inputEntrada').value       = turno?.HORA_ENTRADA || '08:00';
-  document.getElementById('inputSalida').value        = turno?.HORA_SALIDA  || '15:00';
+  document.getElementById('selTurno').value           = normalizarCodTurno(turno?.TURNO || '');
+  document.getElementById('inputEntrada').value       = turno?.HORA_ENTRADA || '';
+  document.getElementById('inputSalida').value        = turno?.HORA_SALIDA  || '';
   document.getElementById('inputNotas').value         = turno?.NOTAS || '';
   document.getElementById('selEstado').value          = turno?.ESTADO || 'NORMAL';
   document.getElementById('btnEliminar').style.display = turno ? 'block' : 'none';
@@ -1365,20 +1440,13 @@ function setModo(modo) {
 }
 
 function actualizarHoras() {
-  const turno  = document.getElementById('selTurno').value;
+  const codigo = document.getElementById('selTurno').value;
   const hE     = document.getElementById('inputEntrada');
   const hS     = document.getElementById('inputSalida');
-  const params = parametros;
-
-  if (turno === 'M') {
-    const [e,s] = (params.HORAS_TURNO_MANANA   || '08:00-15:00').split('-');
-    hE.value = e; hS.value = s;
-  } else if (turno === 'T') {
-    const [e,s] = (params.HORAS_TURNO_TARDE    || '15:00-23:00').split('-');
-    hE.value = e; hS.value = s;
-  } else if (turno === 'C') {
-    const [e,s] = (params.HORAS_TURNO_COMPLETO || '08:00-23:00').split('-');
-    hE.value = e; hS.value = s;
+  const def    = turnosDef.find(t => t.codigo === codigo);
+  if (def) {
+    hE.value = def.entrada;
+    hS.value = def.salida;
   }
 }
 
