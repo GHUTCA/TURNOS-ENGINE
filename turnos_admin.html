@@ -202,7 +202,7 @@
     font-size: 9px;
     color: var(--gris4);
     text-align: center;
-    min-width: 28px;
+    min-width: 46px;
   }
   .grilla-header .col-dia.domingo { color: var(--rojo); }
   .grilla-header .col-dia .num-dia {
@@ -253,12 +253,13 @@
     color: var(--oficial);
     margin-top: 2px;
   }
+  .nombre-horas.ok      { color: var(--oficial); }
   .nombre-horas.warning { color: var(--tarde); }
   .nombre-horas.danger  { color: var(--ausente); }
 
   /* Celdas turno */
   .celda {
-    min-width: 28px;
+    min-width: 46px;
     height: 52px;
     border-right: 1px solid rgba(58,58,94,0.3);
     cursor: pointer;
@@ -273,7 +274,7 @@
   .celda.domingo { background: rgba(233,69,96,0.04); }
 
   .celda-inner {
-    width: 22px; height: 38px;
+    width: 42px; height: 44px;
     border-radius: 4px;
     display: flex;
     flex-direction: column;
@@ -321,6 +322,24 @@
   }
   .turno-letra { font-size: 10px; font-weight: 700; }
   .turno-sec   { font-size: 7px; opacity: 0.8; }
+  .turno-hora  { font-size: 7px; opacity: 0.75; line-height: 1; margin-top: 1px; white-space: nowrap; }
+
+  /* Colores por tipo de turno (solo si estado NORMAL y modo OFICIAL) */
+  .celda-inner.t-apertura {
+    background: rgba(52,152,219,0.18);
+    color: #5DADE2;
+    border: 1px solid rgba(52,152,219,0.4);
+  }
+  .celda-inner.t-intermedio {
+    background: rgba(241,196,15,0.18);
+    color: #F1C40F;
+    border: 1px solid rgba(241,196,15,0.4);
+  }
+  .celda-inner.t-cierre {
+    background: rgba(142,68,173,0.20);
+    color: #BB8FCE;
+    border: 1px solid rgba(142,68,173,0.4);
+  }
 
   /* ── MODAL TURNO ── */
   .modal-overlay {
@@ -1215,6 +1234,32 @@ function abreviarTurno(cod) {
   return c.charAt(0);
 }
 
+// Clase de color por tipo de turno (para celda en estado NORMAL + OFICIAL)
+function claseColorTurno(cod) {
+  const c = String(cod || '').toUpperCase();
+  if (c === 'MANANA' || c === 'APERTURA' || c === 'M') return 't-apertura';
+  if (c === 'INTERMEDIO')                              return 't-intermedio';
+  if (c === 'TARDE' || c === 'CIERRE' || c === 'T')    return 't-cierre';
+  return 'oficial'; // fallback (incluye COMPLETO u otros)
+}
+
+// Devuelve "HH:mm" desde texto normal o desde una fecha ISO accidental.
+function horaCorta(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const s = String(v).trim();
+  if (s.indexOf('T') !== -1 && s.indexOf(':') !== -1) {
+    // residuo tipo "1899-12-30T11:42:45.000Z" → tomar HH:mm
+    return s.split('T')[1].slice(0,5);
+  }
+  const p = s.split(':');
+  if (p.length >= 2) {
+    const h = ('0'+parseInt(p[0],10)).slice(-2);
+    const m = ('0'+parseInt(p[1],10)).slice(-2);
+    return h+':'+m;
+  }
+  return s;
+}
+
 // ══════════════════════════════════════
 // TURNOS MES — GRILLA
 // ══════════════════════════════════════
@@ -1246,7 +1291,7 @@ function renderGrilla() {
 
   // Calcular columnas
   const totalCols = 1 + diasEnMes;
-  const colWidth  = `110px repeat(${diasEnMes}, 28px)`;
+  const colWidth  = `110px repeat(${diasEnMes}, 46px)`;
 
   // Header días
   let headerHtml = `<div class="grilla-header" style="grid-template-columns:${colWidth}">
@@ -1269,8 +1314,13 @@ function renderGrilla() {
     const turnosP = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
     const horasSem = calcularHorasSemanales(turnosP);
     const maxHoras = parseFloat(parametros.HORAS_MAX_SEMANA) || 45;
-    const pct      = horasSem / maxHoras;
-    const horasClass = pct >= 1 ? 'danger' : pct >= 0.85 ? 'warning' : '';
+    const diff       = horasSem - maxHoras;
+    const absDiff    = Math.abs(diff);
+    let horasClass = '';
+    if (horasSem === 0)            horasClass = '';
+    else if (absDiff < 0.1)        horasClass = 'ok';
+    else if (absDiff <= 4)         horasClass = 'warning';
+    else                           horasClass = 'danger';
 
     const iniciales = (p.NOMBRE||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
 
@@ -1288,28 +1338,35 @@ function renderGrilla() {
       const turno     = turnosP.find(t => t.FECHA === fechaStr);
 
       let innerClass = 'vacia';
-      let letra = '', sec = '';
+      let letra = '', sec = '', horaTxt = '', tooltip = '';
 
       if (turno) {
         const modo   = (turno.MODO||'OFICIAL').toLowerCase();
         const estado = (turno.ESTADO||'NORMAL').toLowerCase();
+        // El ESTADO manda (ausente/tarde/permiso). Si NORMAL, color por turno/modo.
         if (estado === 'ausente')       innerClass = 'ausente';
         else if (estado === 'tarde')    innerClass = 'tarde';
         else if (estado === 'permiso')  innerClass = 'permiso';
         else if (modo === 'operativo')  innerClass = 'operativo';
-        else                            innerClass = 'oficial';
+        else                            innerClass = claseColorTurno(turno.TURNO);
         letra = abreviarTurno(turno.TURNO);
         sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
+        const hE = horaCorta(turno.HORA_ENTRADA);
+        const hS = horaCorta(turno.HORA_SALIDA);
+        if (hE && hS) {
+          horaTxt = `${hE}<br>${hS}`;
+          tooltip = `${turno.NOMBRE} · ${hE}-${hS}${sec?(' · '+turno.SECCION):''}`;
+        }
       }
 
       const onclick = userRol !== 'READONLY'
         ? `onclick="abrirModalTurno('${p.ID_PERSONAL}','${p.NOMBRE}','${fechaStr}')"`
         : '';
 
-      filasHtml += `<div class="celda${esDomingo?' domingo':''}" ${onclick}>
+      filasHtml += `<div class="celda${esDomingo?' domingo':''}" ${onclick} title="${tooltip}">
         <div class="celda-inner ${innerClass}">
           <span class="turno-letra">${letra}</span>
-          <span class="turno-sec">${sec}</span>
+          ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
         </div>
       </div>`;
     }
@@ -1454,8 +1511,8 @@ function abrirModalTurno(id_personal, nombre, fechaStr) {
   document.getElementById('modalFecha').textContent   = `${DIAS_ES[fecha.getDay()]} ${fecha.getDate()} ${MESES_ES[fecha.getMonth()]}`;
   document.getElementById('modalNombre').textContent  = nombre;
   document.getElementById('selTurno').value           = normalizarCodTurno(turno?.TURNO || '');
-  document.getElementById('inputEntrada').value       = turno?.HORA_ENTRADA || '';
-  document.getElementById('inputSalida').value        = turno?.HORA_SALIDA  || '';
+  document.getElementById('inputEntrada').value       = horaCorta(turno?.HORA_ENTRADA) || '';
+  document.getElementById('inputSalida').value        = horaCorta(turno?.HORA_SALIDA)  || '';
   document.getElementById('inputNotas').value         = turno?.NOTAS || '';
   document.getElementById('selEstado').value          = turno?.ESTADO || 'NORMAL';
   document.getElementById('btnEliminar').style.display = turno ? 'block' : 'none';
@@ -1544,13 +1601,21 @@ async function guardarTurno() {
     return;
   }
 
+  // Garantizar horas: si las casillas están vacías, usar las del turno elegido
+  let hEntrada = document.getElementById('inputEntrada').value;
+  let hSalida  = document.getElementById('inputSalida').value;
+  if ((!hEntrada || !hSalida)) {
+    const def = turnosDef.find(t => t.codigo === turnoVal);
+    if (def) { hEntrada = hEntrada || def.entrada; hSalida = hSalida || def.salida; }
+  }
+
   const comun = {
     local:        LOCAL,
     id_personal:  modalData.id_personal,
     nombre:       nombreVal,
     turno:        turnoVal,
-    hora_entrada: document.getElementById('inputEntrada').value,
-    hora_salida:  document.getElementById('inputSalida').value,
+    hora_entrada: hEntrada,
+    hora_salida:  hSalida,
     seccion:      document.getElementById('selSeccion').value,
     estado:       document.getElementById('selEstado').value,
     modo:         modoActual,
@@ -1569,6 +1634,8 @@ async function guardarTurno() {
         mostrarToast('Turno guardado ✓', 'ok');
         cerrarModalBtn();
         cargarTurnosMes();
+      } else if (data.tipo === 'DIA_LIBRE') {
+        mostrarToast('⚠️ ' + data.error + ' — asigná primero un día libre', 'warn');
       } else {
         mostrarToast(data.error || 'Error al guardar', 'err');
       }
@@ -1602,21 +1669,24 @@ async function guardarTurno() {
 
 async function eliminarTurno() {
   if (!modalData.turnoExistente?.ID_TURNO) return;
-  // Marcar como eliminado via estado AUSENTE + nota
+  if (!confirm('¿Eliminar este turno? Esta acción no se puede deshacer.')) return;
   const payload = {
     local:    LOCAL,
-    accion:   'marcarEstado',
-    id_turno: modalData.turnoExistente.ID_TURNO,
-    estado:   'AUSENTE',
-    notas:    'Turno eliminado por ' + userEmail
+    accion:   'eliminarTurno',
+    id_turno: modalData.turnoExistente.ID_TURNO
   };
   try {
-    await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
-    mostrarToast('Turno eliminado', 'warn');
-    cerrarModalBtn();
-    cargarTurnosMes();
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarToast('Turno eliminado ✓', 'ok');
+      cerrarModalBtn();
+      cargarTurnosMes();
+    } else {
+      mostrarToast(data.error || 'No se pudo eliminar', 'err');
+    }
   } catch(e) {
-    mostrarToast('Error', 'err');
+    mostrarToast('Error de conexión', 'err');
   }
 }
 
@@ -1761,10 +1831,14 @@ function calcularHorasSemanales(turnos) {
   turnos.forEach(t => {
     const f = new Date(t.FECHA + 'T12:00:00');
     if (f >= lunesHoy && f <= viernesHoy && t.ESTADO !== 'AUSENTE') {
-      if (t.HORA_ENTRADA && t.HORA_SALIDA) {
-        const [hE, mE] = t.HORA_ENTRADA.split(':').map(Number);
-        const [hS, mS] = t.HORA_SALIDA.split(':').map(Number);
-        total += Math.max(0, ((hS*60+mS)-(hE*60+mE))/60);
+      const eTxt = horaCorta(t.HORA_ENTRADA);
+      const sTxt = horaCorta(t.HORA_SALIDA);
+      if (eTxt && sTxt) {
+        const [hE, mE] = eTxt.split(':').map(Number);
+        const [hS, mS] = sTxt.split(':').map(Number);
+        if (!isNaN(hE) && !isNaN(hS)) {
+          total += Math.max(0, ((hS*60+mS)-(hE*60+mE))/60);
+        }
       }
     }
   });
