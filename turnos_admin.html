@@ -395,6 +395,40 @@
 
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+  .dias-multi { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dia-chip {
+    flex: 1 1 auto;
+    min-width: 38px;
+    text-align: center;
+    padding: 9px 4px;
+    border-radius: 6px;
+    border: 1px solid var(--gris3);
+    background: var(--gris2);
+    color: var(--gris4);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: var(--transition);
+  }
+  .dia-chip.sel {
+    background: var(--rojo);
+    border-color: var(--rojo);
+    color: #fff;
+    font-weight: 600;
+  }
+  .dia-chip.base {
+    border-color: var(--blanco);
+    color: var(--blanco);
+  }
+  .dia-chip.base.sel { background: var(--rojo); border-color: var(--rojo); }
+  .dias-multi-hint {
+    font-size: 10px;
+    color: var(--gris4);
+    font-family: var(--font-mono);
+    margin-top: 6px;
+  }
+
   .modo-toggle {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -884,6 +918,12 @@
         <option value="">— Sin turno (día libre) —</option>
         <!-- opciones generadas dinámicamente desde PARAMETROS (HORAS_TURNO_*) -->
       </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Aplicar a varios días <span style="color:var(--gris4);font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
+      <div class="dias-multi" id="diasMulti"><!-- chips generados al abrir el modal --></div>
+      <div class="dias-multi-hint" id="diasMultiHint">Tocá los días para asignar el mismo turno en bloque.</div>
     </div>
 
     <div class="form-row" id="rowHoras">
@@ -1424,6 +1464,47 @@ function abrirModalTurno(id_personal, nombre, fechaStr) {
   poblarSecciones('selSeccion');
   document.getElementById('selSeccion').value = turno?.SECCION || '';
   document.getElementById('modalTurno').classList.add('open');
+  construirDiasMulti(fechaStr);
+}
+
+// Construye los 7 chips de la semana del día clickeado.
+// El día base (el que se abrió) queda siempre seleccionado y marcado.
+let diasMultiSel = new Set();   // fechas 'YYYY-MM-DD' seleccionadas
+let diaMultiBase = null;
+
+function construirDiasMulti(fechaBaseStr) {
+  diaMultiBase = fechaBaseStr;
+  diasMultiSel = new Set([fechaBaseStr]);
+
+  const base   = new Date(fechaBaseStr + 'T12:00:00');
+  const lunes  = getLunes(base);
+  const cont   = document.getElementById('diasMulti');
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(lunes); d.setDate(lunes.getDate() + i);
+    const fStr = formatFecha(d);
+    const esBase = fStr === fechaBaseStr;
+    const cls = 'dia-chip' + (esBase ? ' base sel' : '');
+    html += `<div class="${cls}" data-fecha="${fStr}" onclick="toggleDiaMulti('${fStr}')">${DIAS_ES[d.getDay()].charAt(0)}<br><span style="font-size:10px">${d.getDate()}</span></div>`;
+  }
+  cont.innerHTML = html;
+  actualizarHintMulti();
+}
+
+function toggleDiaMulti(fStr) {
+  if (fStr === diaMultiBase) return;   // el día base no se puede deseleccionar
+  if (diasMultiSel.has(fStr)) diasMultiSel.delete(fStr);
+  else diasMultiSel.add(fStr);
+  const chip = document.querySelector(`.dia-chip[data-fecha="${fStr}"]`);
+  if (chip) chip.classList.toggle('sel', diasMultiSel.has(fStr));
+  actualizarHintMulti();
+}
+
+function actualizarHintMulti() {
+  const n = diasMultiSel.size;
+  const hint = document.getElementById('diasMultiHint');
+  if (n <= 1) hint.textContent = 'Tocá los días para asignar el mismo turno en bloque.';
+  else hint.textContent = `Se asignará el turno a ${n} días.`;
 }
 
 function cerrarModal(e) {
@@ -1454,13 +1535,20 @@ async function guardarTurno() {
   const p = personal.find(p => p.ID_PERSONAL == modalData.id_personal);
   if (!p) return;
 
-  const payload = {
+  const turnoVal = document.getElementById('selTurno').value;
+  const nombreVal = modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE;
+
+  if (!turnoVal) {
+    mostrarToast('Sin turno asignado — día libre', 'warn');
+    cerrarModalBtn();
+    return;
+  }
+
+  const comun = {
     local:        LOCAL,
-    accion:       'guardarTurno',
-    fecha:        modalData.fecha,
     id_personal:  modalData.id_personal,
-    nombre:       modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE,
-    turno:        document.getElementById('selTurno').value,
+    nombre:       nombreVal,
+    turno:        turnoVal,
     hora_entrada: document.getElementById('inputEntrada').value,
     hora_salida:  document.getElementById('inputSalida').value,
     seccion:      document.getElementById('selSeccion').value,
@@ -1469,21 +1557,43 @@ async function guardarTurno() {
     notas:        document.getElementById('inputNotas').value
   };
 
-  if (!payload.turno) {
-    mostrarToast('Sin turno asignado — día libre', 'warn');
-    cerrarModalBtn();
+  const fechas = Array.from(diasMultiSel).sort();
+
+  // ── Caso 1 día: guardarTurno (igual que antes) ──
+  if (fechas.length <= 1) {
+    const payload = Object.assign({ accion:'guardarTurno', fecha: modalData.fecha }, comun);
+    try {
+      const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (data.ok) {
+        mostrarToast('Turno guardado ✓', 'ok');
+        cerrarModalBtn();
+        cargarTurnosMes();
+      } else {
+        mostrarToast(data.error || 'Error al guardar', 'err');
+      }
+    } catch(e) {
+      mostrarToast('Error de conexión', 'err');
+    }
     return;
   }
 
+  // ── Caso varios días: guardarTurnosLote ──
+  const payload = Object.assign({ accion:'guardarTurnosLote', fechas: fechas }, comun);
   try {
+    mostrarToast(`Guardando ${fechas.length} días…`, 'warn');
     const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (data.ok) {
-      mostrarToast('Turno guardado ✓', 'ok');
+      mostrarToast(`${data.guardados} turnos guardados ✓`, 'ok');
+      cerrarModalBtn();
+      cargarTurnosMes();
+    } else if (data.guardados > 0) {
+      mostrarToast(`${data.guardados} guardados, ${data.rechazados} rechazados (límite legal)`, 'warn');
       cerrarModalBtn();
       cargarTurnosMes();
     } else {
-      mostrarToast(data.error || 'Error al guardar', 'err');
+      mostrarToast(data.error || 'Ninguno guardado', 'err');
     }
   } catch(e) {
     mostrarToast('Error de conexión', 'err');
