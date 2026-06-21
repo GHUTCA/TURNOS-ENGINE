@@ -1631,11 +1631,13 @@ async function guardarTurno() {
       const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
       const data = await res.json();
       if (data.ok) {
-        mostrarToast('Turno guardado ✓', 'ok');
+        if (data.advertencia) {
+          mostrarToast('Guardado ⚠️ ' + data.advertencia, 'warn');
+        } else {
+          mostrarToast('Turno guardado ✓', 'ok');
+        }
         cerrarModalBtn();
         cargarTurnosMes();
-      } else if (data.tipo === 'DIA_LIBRE') {
-        mostrarToast('⚠️ ' + data.error + ' — asigná primero un día libre', 'warn');
       } else {
         mostrarToast(data.error || 'Error al guardar', 'err');
       }
