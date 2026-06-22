@@ -283,9 +283,6 @@
     color: var(--oficial);
     margin-top: 2px;
   }
-  .nombre-horas.ok      { color: var(--oficial); }
-  .nombre-horas.warning { color: var(--tarde); }
-  .nombre-horas.danger  { color: var(--ausente); }
 
   /* Celdas turno */
   .celda {
@@ -851,13 +848,22 @@
     background: var(--rojo); border-color: var(--rojo);
     color: #fff; font-weight: 600;
   }
-  .nombre-horas.big {
-    font-size: 15px; font-weight: 700; margin-top: 3px;
+  .h-presencia {
+    font-size: 17px; font-weight: 700; color: var(--blanco);
+    margin-top: 3px; line-height: 1.1;
   }
-  .nombre-colacion {
-    font-size: 9px; color: var(--gris4);
+  .h-presencia.vacio { color: var(--gris3); font-weight: 400; }
+  .h-colacion {
+    font-size: 11px; color: var(--gris4);
     font-family: var(--font-mono); margin-top: 1px;
   }
+  .h-delta {
+    font-size: 10px; font-family: var(--font-mono);
+    margin-top: 2px; font-weight: 600;
+  }
+  .h-delta.ok     { color: var(--oficial); }
+  .h-delta.danger { color: var(--ausente); }
+  .h-delta.under  { color: var(--tarde); }
   .celda-inner.libre {
     background: rgba(46,204,113,0.12);
     color: var(--oficial);
@@ -1529,22 +1535,36 @@ function renderGrilla() {
   let filasHtml = '';
   personal.forEach(p => {
     const turnosP  = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
-    const horasSem = horasDeLaSemana(turnosP, lunesRef);
+    const horasSem = horasDeLaSemana(turnosP, lunesRef);   // horas trabajadas (netas)
     const limiteP  = limiteHoras(p);
     const colMinSem= colacionDeLaSemana(turnosP, lunesRef);
     const colHoras = Math.round(colMinSem/60*10)/10;
-    const absDiff  = Math.abs(horasSem - limiteP);
-    let horasClass = '';
-    if (horasSem === 0)      horasClass = '';
-    else if (absDiff < 0.1)  horasClass = 'ok';
-    else                     horasClass = 'danger';
+    const presencia= Math.round((horasSem + colHoras)*10)/10; // lo que "está" en el local
+    const delta    = Math.round((horasSem - limiteP)*10)/10;  // scostamento dal limite
+
+    // Bloque de horas:
+    //   grande = horas de PRESENCIA (trabajadas + colación) — dato neutro
+    //   colación = resaltada (parte de la presencia que no computa)
+    //   alerta roja SOLO si las horas trabajadas superan/no llegan al límite
+    let bloqueHoras = '';
+    if (horasSem === 0) {
+      bloqueHoras = `<div class="h-presencia vacio">—</div>`;
+    } else {
+      let alertaTxt, alertaCls;
+      if (Math.abs(delta) < 0.1)      { alertaTxt = `${horasSem}h trab. · ok`;          alertaCls = 'ok'; }
+      else if (delta > 0)             { alertaTxt = `${horasSem}h trab. · +${delta}`;    alertaCls = 'danger'; }
+      else                            { alertaTxt = `${horasSem}h trab. · ${delta}`;     alertaCls = 'under'; }
+      bloqueHoras =
+        `<div class="h-presencia">${presencia}h</div>
+         ${colHoras > 0 ? `<div class="h-colacion">incl. ${colHoras}h colación</div>` : ''}
+         <div class="h-delta ${alertaCls}">${alertaTxt}</div>`;
+    }
 
     filasHtml += `<div class="grilla-fila" style="grid-template-columns:${colWidth}">
       <div class="col-nombre">
         <div class="nombre-principal" title="${p.NOMBRE}">${p.NOMBRE}</div>
         <div class="nombre-rol">${etiquetaRol(p)}</div>
-        <div class="nombre-horas big ${horasClass}">${horasSem}/${limiteP}h</div>
-        ${colHoras > 0 ? `<div class="nombre-colacion">+${colHoras}h colación</div>` : ''}
+        ${bloqueHoras}
       </div>`;
 
     dias.forEach(d => {
