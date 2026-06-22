@@ -796,6 +796,31 @@
     letter-spacing: 0.5px;
   }
 
+  .week-selector {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    padding: 0 4px 10px; align-items: center;
+  }
+  .week-btn {
+    padding: 7px 12px; border-radius: 6px;
+    border: 1px solid var(--gris3); background: var(--gris2);
+    color: var(--gris4); font-family: var(--font-mono);
+    font-size: 11px; cursor: pointer; transition: var(--transition);
+    white-space: nowrap;
+  }
+  .week-btn.active {
+    background: var(--rojo); border-color: var(--rojo);
+    color: #fff; font-weight: 600;
+  }
+  .nombre-horas.big {
+    font-size: 15px; font-weight: 700; margin-top: 3px;
+  }
+  .celda-inner.libre {
+    background: rgba(58,58,94,0.25);
+    color: var(--gris4);
+    border: 1px solid var(--gris3);
+  }
+
+
   /* ── ACCESO DENEGADO ── */
   .acceso-denegado {
     display: flex;
@@ -878,7 +903,9 @@
       <div class="ley-item"><div class="ley-dot" style="background:var(--gris3)"></div> Libre</div>
     </div>
 
-    <div class="scroll-hint">← desliza para ver el mes completo →</div>
+    <div class="week-selector" id="weekSelector"></div>
+
+    <div class="scroll-hint" id="scrollHint">← desliza para ver →</div>
 
     <div class="grilla-wrapper">
       <div class="grilla" id="grillaTurnos">
@@ -1084,6 +1111,7 @@ let secciones   = [];
 let mesActual   = new Date().getMonth() + 1;
 let anioActual  = new Date().getFullYear();
 let semanaActual= getLunes(new Date());
+let semanaVista = null;   // null = mes completo; si no, lunes de la semana mostrada
 
 // Modal state
 let modalData   = { id_personal: null, fecha: null, turnoExistente: null };
@@ -1284,20 +1312,91 @@ async function cargarTurnosMes() {
   }
 }
 
+function renderWeekSelector() {
+  const cont = document.getElementById('weekSelector');
+  if (!cont) return;
+  const diasEnMes = new Date(anioActual, mesActual, 0).getDate();
+  const lunesSet = [];
+  for (let d = 1; d <= diasEnMes; d++) {
+    const f = new Date(anioActual, mesActual - 1, d);
+    const l = getLunes(f);
+    const key = formatFecha(l);
+    if (!lunesSet.some(x => x.key === key)) lunesSet.push({ key, lunes: l });
+  }
+  let html = `<button class="week-btn ${!semanaVista?'active':''}" onclick="setSemanaVista(null)">Mes completo</button>`;
+  lunesSet.forEach((w, i) => {
+    const dom = new Date(w.lunes); dom.setDate(dom.getDate()+6);
+    const activa = semanaVista && formatFecha(semanaVista) === w.key;
+    const label = `S${i+1} · ${w.lunes.getDate()}-${dom.getDate()}`;
+    html += `<button class="week-btn ${activa?'active':''}" onclick="setSemanaVista('${w.key}')">${label}</button>`;
+  });
+  cont.innerHTML = html;
+}
+
+function setSemanaVista(key) {
+  semanaVista = key ? new Date(key + 'T12:00:00') : null;
+  renderGrilla();
+}
+
+function horasDeLaSemana(turnos, lunesRef) {
+  const lunes = new Date(lunesRef); lunes.setHours(0,0,0,0);
+  const dom   = new Date(lunes);    dom.setDate(dom.getDate()+6); dom.setHours(23,59,59,999);
+  let total = 0;
+  turnos.forEach(t => {
+    if (!t.TURNO) return;
+    if (t.ESTADO === 'AUSENTE') return;
+    const f = new Date(t.FECHA + 'T12:00:00');
+    if (f >= lunes && f <= dom) {
+      const e = horaCorta(t.HORA_ENTRADA), s = horaCorta(t.HORA_SALIDA);
+      if (e && s) {
+        const [hE,mE] = e.split(':').map(Number);
+        const [hS,mS] = s.split(':').map(Number);
+        if (!isNaN(hE) && !isNaN(hS)) total += Math.max(0, ((hS*60+mS)-(hE*60+mE))/60);
+      }
+    }
+  });
+  return Math.round(total*10)/10;
+}
+
+function etiquetaRol(p) {
+  const etqPersona = parametros['ETIQUETA_' + p.ID_PERSONAL];
+  if (etqPersona) return etqPersona;
+  const map = {};
+  String(parametros.ROLES_MAP || '').split(',').forEach(par => {
+    const [cod, lbl] = par.split(':').map(s => s.trim());
+    if (cod) map[cod] = lbl;
+  });
+  return map[p.ROL] || p.ROL || '';
+}
+
 function renderGrilla() {
   const diasEnMes = new Date(anioActual, mesActual, 0).getDate();
   const hoy = new Date();
   const grilla = document.getElementById('grillaTurnos');
+  const maxHoras = parseFloat(parametros.HORAS_MAX_SEMANA) || 45;
 
-  // Calcular columnas
-  const totalCols = 1 + diasEnMes;
-  const colWidth  = `110px repeat(${diasEnMes}, 46px)`;
+  renderWeekSelector();
 
-  // Header días
+  // Determinar qué días mostrar
+  let dias = [];
+  for (let d = 1; d <= diasEnMes; d++) dias.push(d);
+  let anchoCelda = 46;
+  if (semanaVista) {
+    // solo los días de esa semana que caen en el mes visible
+    dias = [];
+    for (let i = 0; i < 7; i++) {
+      const f = new Date(semanaVista); f.setDate(semanaVista.getDate() + i);
+      if (f.getMonth() + 1 === mesActual && f.getFullYear() === anioActual) dias.push(f.getDate());
+    }
+    anchoCelda = 88;   // celdas más anchas en vista semana
+  }
+
+  const colWidth = `120px repeat(${dias.length}, ${anchoCelda}px)`;
+
+  // Header
   let headerHtml = `<div class="grilla-header" style="grid-template-columns:${colWidth}">
     <div class="col-nombre">Personal</div>`;
-
-  for (let d = 1; d <= diasEnMes; d++) {
+  dias.forEach(d => {
     const fecha  = new Date(anioActual, mesActual - 1, d);
     const diaSem = fecha.getDay();
     const esHoy  = fecha.toDateString() === hoy.toDateString();
@@ -1305,33 +1404,30 @@ function renderGrilla() {
       <span class="num-dia">${d}</span>
       ${DIAS_ES[diaSem].charAt(0)}
     </div>`;
-  }
+  });
   headerHtml += '</div>';
 
-  // Filas personal
+  // Semana de referencia para el contador de horas
+  const lunesRef = semanaVista ? new Date(semanaVista) : getLunes(hoy);
+
   let filasHtml = '';
   personal.forEach(p => {
-    const turnosP = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
-    const horasSem = calcularHorasSemanales(turnosP);
-    const maxHoras = parseFloat(parametros.HORAS_MAX_SEMANA) || 45;
-    const diff       = horasSem - maxHoras;
-    const absDiff    = Math.abs(diff);
+    const turnosP  = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
+    const horasSem = horasDeLaSemana(turnosP, lunesRef);
+    const absDiff  = Math.abs(horasSem - maxHoras);
     let horasClass = '';
-    if (horasSem === 0)            horasClass = '';
-    else if (absDiff < 0.1)        horasClass = 'ok';
-    else if (absDiff <= 4)         horasClass = 'warning';
-    else                           horasClass = 'danger';
-
-    const iniciales = (p.NOMBRE||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+    if (horasSem === 0)      horasClass = '';
+    else if (absDiff < 0.1)  horasClass = 'ok';
+    else                     horasClass = 'danger';   // distinto de 42 = rojo
 
     filasHtml += `<div class="grilla-fila" style="grid-template-columns:${colWidth}">
       <div class="col-nombre">
         <div class="nombre-principal" title="${p.NOMBRE}">${p.NOMBRE}</div>
-        <div class="nombre-rol">${p.ROL||''}</div>
-        <div class="nombre-horas ${horasClass}">${horasSem}h/${maxHoras}h</div>
+        <div class="nombre-rol">${etiquetaRol(p)}</div>
+        <div class="nombre-horas big ${horasClass}">${horasSem}/${maxHoras}h</div>
       </div>`;
 
-    for (let d = 1; d <= diasEnMes; d++) {
+    dias.forEach(d => {
       const fecha     = new Date(anioActual, mesActual - 1, d);
       const fechaStr  = formatFecha(fecha);
       const esDomingo = fecha.getDay() === 0;
@@ -1343,19 +1439,23 @@ function renderGrilla() {
       if (turno) {
         const modo   = (turno.MODO||'OFICIAL').toLowerCase();
         const estado = (turno.ESTADO||'NORMAL').toLowerCase();
-        // El ESTADO manda (ausente/tarde/permiso). Si NORMAL, color por turno/modo.
-        if (estado === 'ausente')       innerClass = 'ausente';
+        const esLibre = !turno.TURNO || turno.TURNO === '';
+        if (esLibre)                    { innerClass = 'libre'; letra = 'LIBRE'; }
+        else if (estado === 'ausente')  innerClass = 'ausente';
         else if (estado === 'tarde')    innerClass = 'tarde';
         else if (estado === 'permiso')  innerClass = 'permiso';
         else if (modo === 'operativo')  innerClass = 'operativo';
         else                            innerClass = claseColorTurno(turno.TURNO);
-        letra = abreviarTurno(turno.TURNO);
-        sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
-        const hE = horaCorta(turno.HORA_ENTRADA);
-        const hS = horaCorta(turno.HORA_SALIDA);
-        if (hE && hS) {
-          horaTxt = `${hE}<br>${hS}`;
-          tooltip = `${turno.NOMBRE} · ${hE}-${hS}${sec?(' · '+turno.SECCION):''}`;
+
+        if (!esLibre) {
+          letra = abreviarTurno(turno.TURNO);
+          sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
+          const hE = horaCorta(turno.HORA_ENTRADA);
+          const hS = horaCorta(turno.HORA_SALIDA);
+          if (hE && hS) {
+            horaTxt = anchoCelda >= 88 ? `${hE} - ${hS}` : `${hE}<br>${hS}`;
+            tooltip = `${turno.NOMBRE} · ${hE}-${hS}${sec?(' · '+turno.SECCION):''}`;
+          }
         }
       }
 
@@ -1369,7 +1469,7 @@ function renderGrilla() {
           ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
         </div>
       </div>`;
-    }
+    });
     filasHtml += '</div>';
   });
 
@@ -1595,16 +1695,16 @@ async function guardarTurno() {
   const turnoVal = document.getElementById('selTurno').value;
   const nombreVal = modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE;
 
-  if (!turnoVal) {
-    mostrarToast('Sin turno asignado — día libre', 'warn');
-    cerrarModalBtn();
-    return;
-  }
+  // Día libre = se guarda como registro con TURNO vacío (aparece "LIBRE")
+  // Esto permite que el sistema sepa quién está libre (validación + generador).
+  const esLibre = !turnoVal;
 
   // Garantizar horas: si las casillas están vacías, usar las del turno elegido
   let hEntrada = document.getElementById('inputEntrada').value;
   let hSalida  = document.getElementById('inputSalida').value;
-  if ((!hEntrada || !hSalida)) {
+  if (esLibre) {
+    hEntrada = ''; hSalida = '';
+  } else if (!hEntrada || !hSalida) {
     const def = turnosDef.find(t => t.codigo === turnoVal);
     if (def) { hEntrada = hEntrada || def.entrada; hSalida = hSalida || def.salida; }
   }
