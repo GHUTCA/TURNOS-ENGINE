@@ -68,6 +68,36 @@
     text-transform: uppercase;
     letter-spacing: 1px;
   }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .btn-norma {
+    background: var(--gris2); border: 1px solid var(--gris3);
+    color: var(--blanco); font-family: var(--font-mono); font-size: 11px;
+    padding: 6px 11px; border-radius: 6px; cursor: pointer;
+    transition: var(--transition); white-space: nowrap;
+  }
+  .btn-norma:hover { border-color: var(--rojo); }
+  .norma-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 500;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .norma-overlay.open { display: flex; }
+  .norma-card {
+    background: var(--gris1); border: 1px solid var(--gris3);
+    border-radius: 12px; max-width: 520px; width: 100%;
+    max-height: 85vh; overflow-y: auto; padding: 24px;
+  }
+  .norma-titulo { font-family: var(--font-mono); font-size: 17px; color: var(--blanco); margin-bottom: 2px; }
+  .norma-sub { font-size: 12px; color: var(--gris4); margin-bottom: 18px; }
+  .norma-bloque { margin-bottom: 18px; }
+  .norma-h { font-family: var(--font-mono); font-size: 12px; color: var(--rojo); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .norma-bloque p { font-size: 13px; line-height: 1.5; color: var(--blanco); margin-bottom: 6px; }
+  .norma-cita { font-size: 11px; color: var(--gris4); font-style: italic; border-left: 2px solid var(--gris3); padding-left: 10px; margin-top: 8px; }
+  .btn-cerrar-norma {
+    width: 100%; padding: 11px; background: var(--rojo); border: none; color: #fff;
+    font-family: var(--font-sans); font-size: 14px; font-weight: 600;
+    border-radius: 8px; cursor: pointer; margin-top: 6px;
+  }
   .user-info {
     font-size: 11px;
     color: var(--gris4);
@@ -326,7 +356,7 @@
 
   /* Vista semana: celdas anchas, números grandes, usa toda la celda */
   .celda-inner.wide {
-    width: 82px; height: 46px;
+    width: 96px; height: 50px;
     border-radius: 6px;
     gap: 3px;
   }
@@ -881,9 +911,39 @@
       <div class="logo">PINSA</div>
       <div class="local-badge" id="localBadge">—</div>
     </div>
-    <div class="user-info">
-      <div id="userName">—</div>
-      <div class="user-rol" id="userRol">—</div>
+    <div class="header-right">
+      <button class="btn-norma" onclick="abrirNorma()" title="Normativa laboral">🇨🇱 Ley</button>
+      <div class="user-info">
+        <div id="userName">—</div>
+        <div class="user-rol" id="userRol">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay norma DT -->
+  <div id="modalNorma" class="norma-overlay" onclick="if(event.target===this)cerrarNorma()">
+    <div class="norma-card">
+      <div class="norma-titulo">🇨🇱 Normativa laboral · Chile</div>
+      <div class="norma-sub">Base de cálculo de horas en este sistema</div>
+
+      <div class="norma-bloque">
+        <div class="norma-h">Jornada máxima semanal</div>
+        <p><b>Full-time: 42 horas</b> de trabajo efectivo a la semana (Ley 21.561, vigente desde 26-abr-2026; baja a 40h en 2028).</p>
+        <p><b>Part-time: 30 horas</b> semanales máximo (jornada parcial, Art. 40 bis A).</p>
+      </div>
+
+      <div class="norma-bloque">
+        <div class="norma-h">Colación — NO se computa</div>
+        <p>La media hora de colación <b>no es tiempo trabajado</b> y no entra en las 42/30 horas. Por eso este sistema <b>descuenta 30 min por turno</b> y muestra las <b>horas efectivas</b>.</p>
+        <p class="norma-cita">Art. 34 Código del Trabajo: «La jornada de trabajo se dividirá en dos partes, dejándose entre ellas, a lo menos, el tiempo de media hora para la colación. Este período intermedio no se considerará trabajado para computar la duración de la jornada diaria.»</p>
+      </div>
+
+      <div class="norma-bloque">
+        <div class="norma-h">Cómo leer el contador</div>
+        <p>El número bajo cada nombre (ej. <b>40/42h</b>) son <b>horas efectivas</b> de la semana vista, ya sin colación. Verde = cuadrado; rojo = por encima o por debajo del límite.</p>
+      </div>
+
+      <button class="btn-cerrar-norma" onclick="cerrarNorma()">Entendido</button>
     </div>
   </div>
 
@@ -1322,6 +1382,9 @@ async function cargarTurnosMes() {
   }
 }
 
+function abrirNorma() { document.getElementById('modalNorma').classList.add('open'); }
+function cerrarNorma() { document.getElementById('modalNorma').classList.remove('open'); }
+
 function renderWeekSelector() {
   const cont = document.getElementById('weekSelector');
   if (!cont) return;
@@ -1351,6 +1414,8 @@ function setSemanaVista(key) {
 function horasDeLaSemana(turnos, lunesRef) {
   const lunes = new Date(lunesRef); lunes.setHours(0,0,0,0);
   const dom   = new Date(lunes);    dom.setDate(dom.getDate()+6); dom.setHours(23,59,59,999);
+  const colMin    = parseFloat(parametros.COLACION_MIN) || 30;   // minutos de colación (no computan)
+  const umbralCol = parseFloat(parametros.COLACION_UMBRAL_H) || 5; // turnos >= 5h descuentan colación
   let total = 0;
   turnos.forEach(t => {
     if (!t.TURNO) return;
@@ -1361,11 +1426,23 @@ function horasDeLaSemana(turnos, lunesRef) {
       if (e && s) {
         const [hE,mE] = e.split(':').map(Number);
         const [hS,mS] = s.split(':').map(Number);
-        if (!isNaN(hE) && !isNaN(hS)) total += Math.max(0, ((hS*60+mS)-(hE*60+mE))/60);
+        if (!isNaN(hE) && !isNaN(hS)) {
+          let horasBrutas = Math.max(0, ((hS*60+mS)-(hE*60+mE))/60);
+          // Colación NO computa: se descuenta en turnos >= umbral
+          if (horasBrutas >= umbralCol) horasBrutas -= colMin/60;
+          total += Math.max(0, horasBrutas);
+        }
       }
     }
   });
   return Math.round(total*10)/10;
+}
+
+// Límite semanal según tipo de contrato (FT vs PT)
+function limiteHoras(p) {
+  const esPT = String(p.TIPO_CONTRATO||'').toUpperCase() === 'PT';
+  if (esPT) return parseFloat(parametros.HORAS_MAX_SEMANA_PT) || 30;
+  return parseFloat(parametros.HORAS_MAX_SEMANA) || 45;
 }
 
 function etiquetaRol(p) {
@@ -1398,7 +1475,7 @@ function renderGrilla() {
       const f = new Date(semanaVista); f.setDate(semanaVista.getDate() + i);
       if (f.getMonth() + 1 === mesActual && f.getFullYear() === anioActual) dias.push(f.getDate());
     }
-    anchoCelda = 88;   // celdas más anchas en vista semana
+    anchoCelda = 104;   // celdas más anchas en vista semana
   }
 
   const colWidth = `120px repeat(${dias.length}, ${anchoCelda}px)`;
@@ -1424,17 +1501,18 @@ function renderGrilla() {
   personal.forEach(p => {
     const turnosP  = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
     const horasSem = horasDeLaSemana(turnosP, lunesRef);
-    const absDiff  = Math.abs(horasSem - maxHoras);
+    const limiteP  = limiteHoras(p);
+    const absDiff  = Math.abs(horasSem - limiteP);
     let horasClass = '';
     if (horasSem === 0)      horasClass = '';
     else if (absDiff < 0.1)  horasClass = 'ok';
-    else                     horasClass = 'danger';   // distinto de 42 = rojo
+    else                     horasClass = 'danger';
 
     filasHtml += `<div class="grilla-fila" style="grid-template-columns:${colWidth}">
       <div class="col-nombre">
         <div class="nombre-principal" title="${p.NOMBRE}">${p.NOMBRE}</div>
         <div class="nombre-rol">${etiquetaRol(p)}</div>
-        <div class="nombre-horas big ${horasClass}">${horasSem}/${maxHoras}h</div>
+        <div class="nombre-horas big ${horasClass}">${horasSem}/${limiteP}h</div>
       </div>`;
 
     dias.forEach(d => {
@@ -1463,7 +1541,7 @@ function renderGrilla() {
           const hE = horaCorta(turno.HORA_ENTRADA);
           const hS = horaCorta(turno.HORA_SALIDA);
           if (hE && hS) {
-            horaTxt = anchoCelda >= 88 ? `${hE} - ${hS}` : `${hE}<br>${hS}`;
+            horaTxt = anchoCelda >= 100 ? `${hE} - ${hS}` : `${hE}<br>${hS}`;
             tooltip = `${turno.NOMBRE} · ${hE}-${hS}${sec?(' · '+turno.SECCION):''}`;
           }
         }
@@ -1474,7 +1552,7 @@ function renderGrilla() {
         : '';
 
       filasHtml += `<div class="celda${esDomingo?' domingo':''}" ${onclick} title="${tooltip}">
-        <div class="celda-inner ${innerClass}${anchoCelda>=88?' wide':''}">
+        <div class="celda-inner ${innerClass}${anchoCelda>=100?' wide':''}">
           <span class="turno-letra">${letra}</span>
           ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
         </div>
