@@ -316,13 +316,23 @@
     border: 1px solid rgba(155,89,182,0.3);
   }
   .celda-inner.libre {
-    background: var(--libre);
-    color: var(--gris4);
-    border: 1px solid var(--gris3);
+    background: rgba(46,204,113,0.12);
+    color: var(--oficial);
+    border: 1px solid rgba(46,204,113,0.45);
   }
   .turno-letra { font-size: 10px; font-weight: 700; }
   .turno-sec   { font-size: 7px; opacity: 0.8; }
   .turno-hora  { font-size: 7px; opacity: 0.75; line-height: 1; margin-top: 1px; white-space: nowrap; }
+
+  /* Vista semana: celdas anchas, números grandes, usa toda la celda */
+  .celda-inner.wide {
+    width: 82px; height: 46px;
+    border-radius: 6px;
+    gap: 3px;
+  }
+  .celda-inner.wide .turno-letra { font-size: 15px; }
+  .celda-inner.wide .turno-hora  { font-size: 11px; opacity: 0.9; font-weight: 500; }
+  .celda-inner.wide .turno-sec   { font-size: 10px; }
 
   /* Colores por tipo de turno (solo si estado NORMAL y modo OFICIAL) */
   .celda-inner.t-apertura {
@@ -815,9 +825,9 @@
     font-size: 15px; font-weight: 700; margin-top: 3px;
   }
   .celda-inner.libre {
-    background: rgba(58,58,94,0.25);
-    color: var(--gris4);
-    border: 1px solid var(--gris3);
+    background: rgba(46,204,113,0.12);
+    color: var(--oficial);
+    border: 1px solid rgba(46,204,113,0.45);
   }
 
 
@@ -1464,7 +1474,7 @@ function renderGrilla() {
         : '';
 
       filasHtml += `<div class="celda${esDomingo?' domingo':''}" ${onclick} title="${tooltip}">
-        <div class="celda-inner ${innerClass}">
+        <div class="celda-inner ${innerClass}${anchoCelda>=88?' wide':''}">
           <span class="turno-letra">${letra}</span>
           ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
         </div>
