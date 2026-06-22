@@ -545,6 +545,43 @@
     color: var(--blanco);
   }
   .btn-guardar:hover { opacity: 0.85; }
+  .btn-siguiente {
+    background: #2563eb;
+    color: var(--blanco);
+  }
+  .btn-siguiente:hover { opacity: 0.85; }
+
+  /* Celda con turno pendiente de guardar (en cola) */
+  .celda-inner.pendiente {
+    box-shadow: inset 0 0 0 2px #f5b301;
+    position: relative;
+  }
+  .celda-inner.pendiente::after {
+    content: '•';
+    position: absolute;
+    top: 1px; right: 3px;
+    color: #f5b301;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  /* Barra inferior fija con contador de la cola */
+  .barra-cola {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: #1a1a1a;
+    color: #fff;
+    padding: 12px 18px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    z-index: 900;
+    box-shadow: 0 -3px 12px rgba(0,0,0,.3);
+  }
+  .barra-cola-txt { font-size: 14px; font-weight: 600; }
+  .barra-cola-btns { display: flex; gap: 10px; }
+  .barra-cola .btn { padding: 8px 16px; }
   .btn-eliminar {
     background: rgba(231,76,60,0.15);
     color: var(--ausente);
@@ -923,6 +960,7 @@
     </div>
     <div class="header-right">
       <button class="btn-norma" onclick="abrirNorma()" title="Normativa laboral">🇨🇱 Ley</button>
+      <button class="btn-norma" onclick="verificarLegalidad()" title="Revisar infracciones del mes">⚖️ Verificar</button>
       <div class="user-info">
         <div id="userName">—</div>
         <div class="user-rol" id="userRol">—</div>
@@ -1102,6 +1140,7 @@
 
     <div class="modal-actions">
       <button class="btn btn-cancelar" onclick="cerrarModalBtn()">Cancelar</button>
+      <button class="btn btn-siguiente" onclick="guardarYSiguiente()">Guardar y siguiente →</button>
       <button class="btn btn-guardar"  onclick="guardarTurno()">Guardar</button>
       <button class="btn btn-eliminar" id="btnEliminar" onclick="eliminarTurno()" style="display:none;">
         Quitar turno
@@ -1200,6 +1239,11 @@ let semanaVista = null;   // null = mes completo; si no, lunes de la semana most
 let modalData   = { id_personal: null, fecha: null, turnoExistente: null };
 let modoActual  = 'OFICIAL';
 let personalEditando = null;
+
+// ── COLA DE TURNOS PENDIENTES (guardado rápido por lotes) ──
+// Mapa clave "fecha|id_personal" -> objeto turno pendiente.
+// Se pintan en la grilla con clase 'pendiente' (amarillo) hasta enviar.
+let colaPendientes = {};
 
 // ══════════════════════════════════════
 // LOGIN GOOGLE
@@ -1387,7 +1431,14 @@ async function cargarTurnosMes() {
     personal   = resPersonal.personal  || [];
     turnosMes  = resTurnos.turnos      || [];
 
+    // Reinyectar turnos pendientes (cola) que aún no se han enviado
+    Object.values(colaPendientes).forEach(t => {
+      const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
+      if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
+    });
+
     renderGrilla();
+    actualizarBarraCola();
     document.getElementById('mesTitulo').textContent = `${MESES_ES[mesActual-1]} ${anioActual}`;
   } catch(e) {
     document.getElementById('grillaTurnos').innerHTML =
@@ -1590,6 +1641,8 @@ function renderGrilla() {
         else if (modo === 'operativo')  innerClass = 'operativo';
         else                            innerClass = claseColorTurno(turno.TURNO);
 
+        if (turno._pendiente) innerClass += ' pendiente';
+
         if (!esLibre) {
           letra = abreviarTurno(turno.TURNO);
           sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
@@ -1747,8 +1800,14 @@ function renderPersonal() {
 // MODAL TURNO
 // ══════════════════════════════════════
 function abrirModalTurno(id_personal, nombre, fechaStr) {
-  const turno = turnosMes.find(t => t.ID_PERSONAL == id_personal && t.FECHA === fechaStr);
-  modalData   = { id_personal, fecha: fechaStr, turnoExistente: turno || null };
+  // Prioridad: pendiente en cola > turno ya guardado en hoja
+  const pend  = colaPendientes[fechaStr + '|' + id_personal];
+  const turno = pend || turnosMes.find(t => t.ID_PERSONAL == id_personal && t.FECHA === fechaStr);
+  modalData   = {
+    id_personal, fecha: fechaStr,
+    turnoExistente: turno || null,
+    idxPersonal: personal.findIndex(p => p.ID_PERSONAL == id_personal)
+  };
 
   const fecha = new Date(fechaStr + 'T12:00:00');
   document.getElementById('modalFecha').textContent   = `${DIAS_ES[fecha.getDay()]} ${fecha.getDate()} ${MESES_ES[fecha.getMonth()]}`;
@@ -1829,6 +1888,188 @@ function actualizarHoras() {
     hE.value = def.entrada;
     hS.value = def.salida;
   }
+}
+
+// ══════════════════════════════════════
+// COLA RÁPIDA — encolar + siguiente + enviar todo
+// ══════════════════════════════════════
+
+// Construye el objeto turno desde el modal (mismo formato que turnosMes).
+function leerTurnoDesdeModal() {
+  const p = personal.find(p => p.ID_PERSONAL == modalData.id_personal);
+  if (!p) return null;
+
+  const turnoVal  = document.getElementById('selTurno').value;
+  const nombreVal = modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE;
+  const esLibre   = !turnoVal;
+
+  let hEntrada = document.getElementById('inputEntrada').value;
+  let hSalida  = document.getElementById('inputSalida').value;
+  if (esLibre) { hEntrada = ''; hSalida = ''; }
+  else if (!hEntrada || !hSalida) {
+    const def = turnosDef.find(t => t.codigo === turnoVal);
+    if (def) { hEntrada = hEntrada || def.entrada; hSalida = hSalida || def.salida; }
+  }
+
+  // Conservar ID_TURNO si ya existía (para upsert correcto en el servidor)
+  const idTurno = modalData.turnoExistente?.ID_TURNO || null;
+
+  return {
+    ID_TURNO:     idTurno,
+    FECHA:        modalData.fecha,
+    ID_PERSONAL:  modalData.id_personal,
+    NOMBRE:       nombreVal,
+    TURNO:        turnoVal,
+    HORA_ENTRADA: hEntrada,
+    HORA_SALIDA:  hSalida,
+    SECCION:      document.getElementById('selSeccion').value,
+    ESTADO:       document.getElementById('selEstado').value,
+    MODO:         modoActual,
+    NOTAS:        document.getElementById('inputNotas').value,
+    _pendiente:   true
+  };
+}
+
+// Mete el turno en la cola, lo pinta YA en la grilla y devuelve true.
+function encolarTurnoActual() {
+  const t = leerTurnoDesdeModal();
+  if (!t) return false;
+  const clave = t.FECHA + '|' + t.ID_PERSONAL;
+  colaPendientes[clave] = t;
+
+  // Inyectar/actualizar en turnosMes para que renderGrilla lo dibuje al instante
+  const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
+  if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
+  return true;
+}
+
+// "Guardar y siguiente": encola y abre el modal del siguiente empleado, misma fecha.
+function guardarYSiguiente() {
+  if (!encolarTurnoActual()) return;
+  renderGrilla();
+  actualizarBarraCola();
+
+  const idx = modalData.idxPersonal;
+  // Buscar siguiente empleado visible (saltar READONLY no aplica aquí)
+  let next = -1;
+  for (let k = idx + 1; k < personal.length; k++) { next = k; break; }
+
+  if (next === -1) {
+    // Era el último: cerrar y avisar
+    cerrarModalBtn();
+    mostrarToast('Último empleado encolado ✓ — pulsá "Guardar todo"', 'ok');
+    return;
+  }
+  const p = personal[next];
+  abrirModalTurno(p.ID_PERSONAL, p.NOMBRE, modalData.fecha);
+}
+
+// Envía TODA la cola en una sola llamada (guardarMultiplesTurnos).
+async function guardarTodo() {
+  const turnos = Object.values(colaPendientes);
+  if (!turnos.length) { mostrarToast('No hay turnos pendientes', 'warn'); return; }
+
+  const payload = {
+    accion: 'guardarMultiplesTurnos',
+    local:  LOCAL,
+    turnos: turnos.map(t => ({
+      id_personal:  t.ID_PERSONAL,
+      nombre:       t.NOMBRE,
+      fecha:        t.FECHA,
+      turno:        t.TURNO,
+      hora_entrada: t.HORA_ENTRADA,
+      hora_salida:  t.HORA_SALIDA,
+      seccion:      t.SECCION,
+      estado:       t.ESTADO,
+      modo:         t.MODO,
+      notas:        t.NOTAS
+    }))
+  };
+
+  try {
+    mostrarToast(`Guardando ${turnos.length} turnos…`, 'warn');
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      colaPendientes = {};
+      mostrarToast(`${data.total} turnos guardados ✓ (${data.creados} nuevos, ${data.actualizados} act.)`, 'ok');
+      actualizarBarraCola();
+      cargarTurnosMes();
+    } else {
+      mostrarToast(data.error || 'Error al guardar', 'err');
+    }
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+}
+
+// Descarta la cola sin enviar.
+function descartarCola() {
+  if (!Object.keys(colaPendientes).length) return;
+  if (!confirm('¿Descartar todos los turnos pendientes sin guardar?')) return;
+  colaPendientes = {};
+  actualizarBarraCola();
+  cargarTurnosMes();   // recarga limpia desde la hoja
+}
+
+// Pinta/oculta la barra inferior con el contador y los botones.
+function actualizarBarraCola() {
+  const n = Object.keys(colaPendientes).length;
+  let barra = document.getElementById('barraCola');
+  if (!barra) {
+    barra = document.createElement('div');
+    barra.id = 'barraCola';
+    barra.className = 'barra-cola';
+    barra.innerHTML = `
+      <span class="barra-cola-txt" id="barraColaTxt"></span>
+      <div class="barra-cola-btns">
+        <button class="btn btn-cancelar" onclick="descartarCola()">Descartar</button>
+        <button class="btn btn-guardar"  onclick="guardarTodo()">Guardar todo</button>
+      </div>`;
+    document.body.appendChild(barra);
+  }
+  document.getElementById('barraColaTxt').textContent =
+    n === 0 ? '' : `${n} turno${n>1?'s':''} pendiente${n>1?'s':''} de guardar`;
+  barra.style.display = n === 0 ? 'none' : 'flex';
+}
+
+// ── Verificar legalidad del mes (validación a posteriori) ──
+async function verificarLegalidad() {
+  try {
+    mostrarToast('Verificando legalidad…', 'warn');
+    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=validarMes&mes=${mesActual}&anio=${anioActual}`);
+    const data = await res.json();
+    if (!data.ok) { mostrarToast(data.error || 'Error', 'err'); return; }
+    mostrarReporteLegal(data);
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+}
+
+function mostrarReporteLegal(data) {
+  let ov = document.getElementById('modalLegal');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'modalLegal';
+    ov.className = 'modal-overlay';
+    ov.onclick = (e) => { if (e.target === ov) ov.classList.remove('open'); };
+    ov.innerHTML = `<div class="modal"><div class="modal-titulo">Verificación legal</div>
+      <div id="legalBody" style="max-height:60vh;overflow:auto"></div>
+      <div class="modal-actions"><button class="btn btn-cancelar" onclick="document.getElementById('modalLegal').classList.remove('open')">Cerrar</button></div></div>`;
+    document.body.appendChild(ov);
+  }
+  const body = document.getElementById('legalBody');
+  if (data.total === 0) {
+    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--verde,#2ecc71);font-size:15px">✓ Sin infracciones en ${data.mes}/${data.anio}</div>`;
+  } else {
+    const iconos = { DOMINGOS:'📅', HORAS:'⏱️', DIA_LIBRE:'🛌' };
+    body.innerHTML = `<div style="padding:8px 0;color:var(--gris4);font-size:13px">${data.total} infracci${data.total>1?'ones':'ón'} a corregir:</div>` +
+      data.infracciones.map(inf =>
+        `<div style="padding:10px 12px;margin:6px 0;background:rgba(231,76,60,.08);border-left:3px solid #e74c3c;border-radius:6px;font-size:13px">
+          ${iconos[inf.tipo]||'⚠️'} ${inf.msg}
+        </div>`).join('');
+  }
+  ov.classList.add('open');
 }
 
 async function guardarTurno() {
