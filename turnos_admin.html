@@ -861,9 +861,9 @@
     font-size: 11px; font-family: var(--font-mono);
     margin-top: 3px; font-weight: 600;
   }
-  .h-delta.ok     { color: #7FD1A0; }   /* verde opaco, suave */
-  .h-delta.danger { color: #F08A8A; }   /* rojo opaco, suave */
-  .h-delta.under  { color: #E8B57A; }   /* ámbar opaco, suave */
+  .h-delta.ok     { color: #8FD9AE; }   /* verde opaco */
+  .h-delta.danger { color: #F2A6A6; }   /* rojo claro, legible en oscuro */
+  .h-delta.under  { color: #EBC18C; }   /* ámbar opaco */
   .celda-inner.libre {
     background: rgba(46,204,113,0.12);
     color: var(--oficial);
@@ -950,7 +950,10 @@
 
       <div class="norma-bloque">
         <div class="norma-h">Cómo leer el contador</div>
-        <p>El número bajo cada nombre (ej. <b>40/42h</b>) son <b>horas efectivas</b> de la semana vista, ya sin colación. Verde = cuadrado; rojo = por encima o por debajo del límite.</p>
+        <p>Bajo cada nombre hay tres líneas:</p>
+        <p><b>45h</b> (grande) = horas de <b>presencia</b> en el local (trabajadas + colación).</p>
+        <p><b>incl. 3h colación</b> (gris) = parte de esa presencia que es descanso y <b>no computa</b>.</p>
+        <p><b>42h trab. · ok</b> = horas <b>trabajadas</b> reales y su estado: verde si cuadra al límite (42h FT / 30h PT), rojo si lo supera, ámbar si falta.</p>
       </div>
 
       <button class="btn-cerrar-norma" onclick="cerrarNorma()">Entendido</button>
