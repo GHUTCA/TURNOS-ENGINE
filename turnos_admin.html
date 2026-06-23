@@ -396,6 +396,8 @@
     padding: 24px 20px 32px;
     width: 100%;
     max-width: 480px;
+    max-height: 92vh;
+    overflow-y: auto;
     animation: slideUp 0.25s ease;
   }
   @keyframes slideUp {
@@ -550,6 +552,10 @@
     color: var(--blanco);
   }
   .btn-siguiente:hover { opacity: 0.85; }
+  .modal-sel-empleado {
+    font-size: 17px !important;
+    font-weight: 600;
+  }
 
   /* Celda con turno pendiente de guardar (en cola) */
   .celda-inner.pendiente {
@@ -1077,7 +1083,13 @@
 <div class="modal-overlay" id="modalTurno" onclick="cerrarModal(event)">
   <div class="modal">
     <div class="modal-titulo" id="modalFecha">—</div>
-    <div class="modal-nombre" id="modalNombre">—</div>
+
+    <div class="form-group">
+      <label class="form-label">Empleado</label>
+      <select class="form-select modal-sel-empleado" id="selEmpleadoModal" onchange="cambiarEmpleadoModal()">
+        <!-- opciones generadas dinámicamente -->
+      </select>
+    </div>
 
     <div class="form-group">
       <label class="form-label">Turno</label>
@@ -1244,6 +1256,9 @@ let personalEditando = null;
 // Mapa clave "fecha|id_personal" -> objeto turno pendiente.
 // Se pintan en la grilla con clase 'pendiente' (amarillo) hasta enviar.
 let colaPendientes = {};
+
+// Último turno asignado (para precargarlo al avanzar de día con "Guardar y siguiente")
+let ultimoTurnoUsado = null;
 
 // ══════════════════════════════════════
 // LOGIN GOOGLE
@@ -1811,7 +1826,14 @@ function abrirModalTurno(id_personal, nombre, fechaStr) {
 
   const fecha = new Date(fechaStr + 'T12:00:00');
   document.getElementById('modalFecha').textContent   = `${DIAS_ES[fecha.getDay()]} ${fecha.getDate()} ${MESES_ES[fecha.getMonth()]}`;
-  document.getElementById('modalNombre').textContent  = nombre;
+
+  // Poblar selector de empleado y marcar el actual
+  const selEmp = document.getElementById('selEmpleadoModal');
+  selEmp.innerHTML = personal.map(p =>
+    `<option value="${p.ID_PERSONAL}">${p.NOMBRE}${p.ROL ? ' · ' + etiquetaRol(p) : ''}</option>`
+  ).join('');
+  selEmp.value = id_personal;
+
   document.getElementById('selTurno').value           = normalizarCodTurno(turno?.TURNO || '');
   document.getElementById('inputEntrada').value       = horaCorta(turno?.HORA_ENTRADA) || '';
   document.getElementById('inputSalida').value        = horaCorta(turno?.HORA_SALIDA)  || '';
@@ -1822,6 +1844,17 @@ function abrirModalTurno(id_personal, nombre, fechaStr) {
   setModo(turno?.MODO || 'OFICIAL');
   poblarSecciones('selSeccion');
   document.getElementById('selSeccion').value = turno?.SECCION || '';
+
+  // Si la celda está vacía y venimos de "Guardar y siguiente",
+  // precargar el último turno usado para repetir a clicks.
+  if (!turno && ultimoTurnoUsado) {
+    document.getElementById('selTurno').value     = ultimoTurnoUsado.turno   || '';
+    document.getElementById('inputEntrada').value = ultimoTurnoUsado.entrada || '';
+    document.getElementById('inputSalida').value  = ultimoTurnoUsado.salida  || '';
+    document.getElementById('selSeccion').value   = ultimoTurnoUsado.seccion || '';
+    setModo(ultimoTurnoUsado.modo || 'OFICIAL');
+  }
+
   document.getElementById('modalTurno').classList.add('open');
   construirDiasMulti(fechaStr);
 }
@@ -1871,6 +1904,7 @@ function cerrarModal(e) {
 }
 function cerrarModalBtn() {
   document.getElementById('modalTurno').classList.remove('open');
+  ultimoTurnoUsado = null;   // termina la cadena de "Guardar y siguiente"
 }
 
 function setModo(modo) {
@@ -1943,25 +1977,45 @@ function encolarTurnoActual() {
   return true;
 }
 
-// "Guardar y siguiente": encola y abre el modal del siguiente empleado, misma fecha.
+// "Guardar y siguiente": encola este día y AVANZA al día siguiente,
+// MISMO empleado, con el turno precargado para repetir a clicks.
 function guardarYSiguiente() {
   if (!encolarTurnoActual()) return;
   renderGrilla();
   actualizarBarraCola();
 
-  const idx = modalData.idxPersonal;
-  // Buscar siguiente empleado visible (saltar READONLY no aplica aquí)
-  let next = -1;
-  for (let k = idx + 1; k < personal.length; k++) { next = k; break; }
+  // Recordar el turno recién puesto para precargarlo en el día siguiente
+  ultimoTurnoUsado = {
+    turno:   document.getElementById('selTurno').value,
+    entrada: document.getElementById('inputEntrada').value,
+    salida:  document.getElementById('inputSalida').value,
+    seccion: document.getElementById('selSeccion').value,
+    modo:    modoActual
+  };
 
-  if (next === -1) {
-    // Era el último: cerrar y avisar
+  // Día siguiente, mismo empleado
+  const fechaSig = new Date(modalData.fecha + 'T12:00:00');
+  fechaSig.setDate(fechaSig.getDate() + 1);
+  const fechaSigStr = formatFecha(fechaSig);
+
+  // Si nos pasamos del mes visible, cerrar y avisar
+  if (fechaSig.getMonth() + 1 !== mesActual || fechaSig.getFullYear() !== anioActual) {
     cerrarModalBtn();
-    mostrarToast('Último empleado encolado ✓ — pulsá "Guardar todo"', 'ok');
+    mostrarToast('Fin de mes ✓ — pulsá "Guardar todo"', 'ok');
     return;
   }
-  const p = personal[next];
-  abrirModalTurno(p.ID_PERSONAL, p.NOMBRE, modalData.fecha);
+
+  const id = modalData.id_personal;
+  const p  = personal.find(p => p.ID_PERSONAL == id);
+  abrirModalTurno(id, p ? p.NOMBRE : '', fechaSigStr);
+}
+
+// Cambiar de empleado SIN cerrar el modal (mismo día).
+function cambiarEmpleadoModal() {
+  ultimoTurnoUsado = null;   // al cambiar de persona, no arrastrar precarga
+  const nuevoId = document.getElementById('selEmpleadoModal').value;
+  const p = personal.find(p => p.ID_PERSONAL == nuevoId);
+  abrirModalTurno(nuevoId, p ? p.NOMBRE : '', modalData.fecha);
 }
 
 // Envía TODA la cola en una sola llamada (guardarMultiplesTurnos).
@@ -2154,12 +2208,31 @@ async function guardarTurno() {
 }
 
 async function eliminarTurno() {
-  if (!modalData.turnoExistente?.ID_TURNO) return;
+  const te = modalData.turnoExistente;
+  if (!te) { cerrarModalBtn(); return; }
+
+  // Caso 1: el turno solo está en la cola (pendiente, no guardado aún)
+  const clave = modalData.fecha + '|' + modalData.id_personal;
+  const soloPendiente = !te.ID_TURNO || te._pendiente;
+  if (soloPendiente && colaPendientes[clave]) {
+    delete colaPendientes[clave];
+    // quitarlo de turnosMes para que desaparezca de la grilla
+    const i = turnosMes.findIndex(x => x.FECHA === modalData.fecha && x.ID_PERSONAL == modalData.id_personal);
+    if (i >= 0 && turnosMes[i]._pendiente) turnosMes.splice(i, 1);
+    cerrarModalBtn();
+    renderGrilla();
+    actualizarBarraCola();
+    mostrarToast('Turno pendiente descartado ✓', 'ok');
+    return;
+  }
+
+  // Caso 2: turno guardado en la hoja -> borrar en el servidor
+  if (!te.ID_TURNO) { cerrarModalBtn(); return; }
   if (!confirm('¿Eliminar este turno? Esta acción no se puede deshacer.')) return;
   const payload = {
     local:    LOCAL,
     accion:   'eliminarTurno',
-    id_turno: modalData.turnoExistente.ID_TURNO
+    id_turno: te.ID_TURNO
   };
   try {
     const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
