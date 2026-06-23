@@ -1015,6 +1015,7 @@
     <div class="tab"        onclick="cambiarTab('hoy')"        id="tab-hoy">Hoy</div>
     <div class="tab"        onclick="cambiarTab('semana')"     id="tab-semana">Semana</div>
     <div class="tab jl-only" onclick="cambiarTab('personal')"  id="tab-personal">Personal</div>
+    <div class="tab jl-only" onclick="cambiarTab('registros')" id="tab-registros">Registros</div>
   </div>
 
   <!-- ── PANEL: TURNOS MES ── -->
@@ -1078,6 +1079,19 @@
       <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando personal...</div></div>
     </div>
     <button class="btn-nuevo" onclick="abrirModalPersonal(null)">+ Agregar persona</button>
+  </div>
+
+  <!-- ── PANEL: REGISTROS DISCIPLINARIOS ── -->
+  <div class="panel" id="panel-registros">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <select class="form-select" id="regFiltroPersona" onchange="cargarRegistros()" style="max-width:240px">
+        <option value="">Todas las personas</option>
+      </select>
+      <button class="btn" onclick="cargarRegistros()" style="padding:8px 14px">↺ Actualizar</button>
+    </div>
+    <div id="registrosLista" class="personal-lista">
+      <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando registros...</div></div>
+    </div>
   </div>
 
 </div><!-- fin appMain -->
@@ -1147,6 +1161,12 @@
     <div class="form-group">
       <label class="form-label">Notas (opcional)</label>
       <input type="text" class="form-input" id="inputNotas" placeholder="Ej: cubre a Pedro">
+    </div>
+
+    <div style="margin:4px 0 0;text-align:center;">
+      <a href="#" onclick="abrirModalRegistroDesdeModal();return false;" style="font-size:12px;color:var(--operativo);text-decoration:none;">
+        ⚠️ Registrar incidencia (atraso / falta / amonestación)
+      </a>
     </div>
 
     <div class="modal-actions">
@@ -1267,6 +1287,47 @@
     <div class="modal-actions">
       <button class="btn btn-cancelar" onclick="cerrarModalPersonalBtn()">Cancelar</button>
       <button class="btn btn-guardar"  onclick="guardarPersonal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL REGISTRO DISCIPLINARIO
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="modalRegistro" onclick="if(event.target===this)cerrarModalRegistro()">
+  <div class="modal">
+    <div class="modal-titulo">Registrar incidencia</div>
+    <div class="modal-nombre" id="regNombre">—</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fecha</label>
+        <input type="date" class="form-input" id="regFecha">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select class="form-select" id="regTipo"></select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Gravedad</label>
+      <select class="form-select" id="regGravedad"></select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Descripción del hecho</label>
+      <textarea class="form-input" id="regDescripcion" rows="3" placeholder="Ej: Llegó 45 min tarde sin aviso. Reincidencia en la semana."></textarea>
+    </div>
+
+    <div style="font-size:11px;color:var(--gris4);margin-bottom:8px;line-height:1.4">
+      El registro queda en el historial. Para enviar carta a la DT, usá el botón
+      "Preparar carta DT" en la pestaña Registros — la revisás antes de enviar.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancelar" onclick="cerrarModalRegistro()">Cancelar</button>
+      <button class="btn btn-guardar"  onclick="guardarRegistro()">Guardar registro</button>
     </div>
   </div>
 </div>
@@ -2545,6 +2606,181 @@ async function eliminarTurnosSeleccionados() {
     mostrarToast('Error de conexión al eliminar', 'err');
   }
 }
+
+// ══════════════════════════════════════
+// REGISTRO DISCIPLINARIO
+// ══════════════════════════════════════
+let registroData = { id_personal: null, nombre: '', rut: '', fecha: null };
+
+// Desde el modal turno: tomar la persona/fecha actual
+function abrirModalRegistroDesdeModal() {
+  const p = personal.find(p => p.ID_PERSONAL == modalData.id_personal);
+  abrirModalRegistro(modalData.id_personal, p ? p.NOMBRE : '', p ? p.RUT : '', modalData.fecha);
+}
+
+function abrirModalRegistro(id_personal, nombre, rut, fecha) {
+  if (userRol === 'READONLY') return;
+  registroData = { id_personal, nombre, rut: rut || '', fecha };
+
+  document.getElementById('regNombre').textContent = nombre || '—';
+  document.getElementById('regFecha').value = fecha || new Date().toISOString().slice(0,10);
+
+  // Tipos y gravedades desde PARAMETROS
+  const tipos = String(parametros.TIPOS_REGISTRO || 'ATRASO,FALTA,AMONESTACION').split(',').map(s=>s.trim()).filter(Boolean);
+  document.getElementById('regTipo').innerHTML =
+    tipos.map(t => `<option value="${t}">${etiquetaLegible(t)}</option>`).join('');
+  const gravs = String(parametros.GRAVEDADES_REGISTRO || 'NORMAL,GRAVE').split(',').map(s=>s.trim()).filter(Boolean);
+  document.getElementById('regGravedad').innerHTML =
+    gravs.map(g => `<option value="${g}">${etiquetaLegible(g)}</option>`).join('');
+
+  document.getElementById('regDescripcion').value = '';
+  document.getElementById('modalRegistro').classList.add('open');
+}
+
+function cerrarModalRegistro() {
+  document.getElementById('modalRegistro').classList.remove('open');
+}
+
+async function guardarRegistro() {
+  const descripcion = document.getElementById('regDescripcion').value.trim();
+  if (!descripcion) { mostrarToast('Describe el hecho', 'err'); return; }
+
+  const payload = {
+    local:          LOCAL,
+    accion:         'guardarRegistro',
+    id_personal:    registroData.id_personal,
+    nombre:         registroData.nombre,
+    rut:            registroData.rut,
+    fecha:          document.getElementById('regFecha').value,
+    tipo:           document.getElementById('regTipo').value,
+    gravedad:       document.getElementById('regGravedad').value,
+    descripcion:    descripcion,
+    registrado_por: userEmail || ''
+  };
+
+  try {
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarToast('Incidencia registrada ✓', 'ok');
+      cerrarModalRegistro();
+      if (document.getElementById('panel-registros')?.classList.contains('active')) {
+        cargarRegistros();
+      }
+    } else {
+      mostrarToast(data.error || 'Error al registrar', 'err');
+    }
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+}
+
+// ── Cargar y pintar el historial de registros ──
+let registrosCache = [];
+async function cargarRegistros() {
+  const cont = document.getElementById('registrosLista');
+  cont.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando registros...</div></div>';
+
+  // poblar filtro de personas (una vez)
+  const selF = document.getElementById('regFiltroPersona');
+  if (selF && selF.options.length <= 1 && personal.length) {
+    selF.innerHTML = '<option value="">Todas las personas</option>' +
+      personal.map(p => `<option value="${p.ID_PERSONAL}">${p.NOMBRE}</option>`).join('');
+  }
+  const filtroId = selF ? selF.value : '';
+
+  try {
+    const url = `${GAS_URL}?local=${LOCAL}&accion=getRegistros${filtroId ? '&id_personal='+filtroId : ''}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    registrosCache = data.registros || [];
+    pintarRegistros(registrosCache);
+  } catch(e) {
+    cont.innerHTML = '<div class="loading"><div class="loading-txt" style="color:var(--ausente)">Error al cargar</div></div>';
+  }
+}
+
+function pintarRegistros(registros) {
+  const cont = document.getElementById('registrosLista');
+  if (!registros.length) {
+    cont.innerHTML = '<div style="text-align:center;color:var(--gris4);padding:30px">Sin registros</div>';
+    return;
+  }
+  const iconos = { ATRASO:'⏰', FALTA:'🚫', AMONESTACION:'⚠️' };
+  cont.innerHTML = registros.map((r, idx) => {
+    const grave = String(r.GRAVEDAD).toUpperCase() === 'GRAVE';
+    const cartaEnviada = (r.CARTA_DT === true || r.CARTA_DT === 'TRUE');
+    return `<div class="personal-card" style="${grave?'border-left:3px solid var(--ausente)':''}">
+      <div class="personal-info" style="flex:1">
+        <div class="personal-nombre">${iconos[String(r.TIPO).toUpperCase()]||'•'} ${r.NOMBRE} <span style="font-size:11px;color:var(--gris4)">· ${r.FECHA}</span></div>
+        <div class="personal-meta">${etiquetaLegible(r.TIPO)} · ${etiquetaLegible(r.GRAVEDAD)}${cartaEnviada?' · 📨 carta DT enviada '+(r.FECHA_CARTA||''):''}</div>
+        <div style="font-size:12px;color:var(--blanco);margin-top:4px">${r.DESCRIPCION||''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <button class="btn-mini" onclick="prepararCartaDT(${idx})" title="Preparar email a la DT">📨 Carta DT</button>
+        ${cartaEnviada?'':`<button class="btn-mini" onclick="marcarCartaEnviada('${r.ID_REGISTRO}')" title="Marcar carta como enviada" style="opacity:.7">✓ marcar enviada</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Preparar carta a la DT: abre Gmail con borrador precargado ──
+function prepararCartaDT(idx) {
+  const r = registrosCache[idx];
+  if (!r) return;
+  const emailDT = parametros.EMAIL_DT || '';
+  const copia   = parametros.EMAIL_COPIA_RRHH || '';
+  const localNom = (parametros.LOCAL || LOCAL).toUpperCase();
+
+  const asunto = `Comunicación de ${etiquetaLegible(r.TIPO)} — ${r.NOMBRE} (RUT ${r.RUT||'s/RUT'})`;
+  const cuerpo =
+`Señores Dirección del Trabajo:
+
+Por medio de la presente, la empresa comunica el siguiente registro disciplinario:
+
+• Trabajador: ${r.NOMBRE}
+• RUT: ${r.RUT || '(sin RUT)'}
+• Local: ${localNom}
+• Tipo de incidencia: ${etiquetaLegible(r.TIPO)}
+• Gravedad: ${etiquetaLegible(r.GRAVEDAD)}
+• Fecha del hecho: ${r.FECHA}
+
+Descripción de los hechos:
+${r.DESCRIPCION || ''}
+
+Quedamos a disposición para cualquier antecedente adicional.
+
+Atentamente,
+${userEmail || ''}
+${localNom}
+
+--------------------------------------------
+BORRADOR generado por el sistema. Revisar antes de enviar.`;
+
+  const params = new URLSearchParams({
+    view: 'cm', fs: '1',
+    to: emailDT,
+    su: asunto,
+    body: cuerpo
+  });
+  if (copia) params.set('bcc', copia);
+  const url = 'https://mail.google.com/mail/?' + params.toString();
+  window.open(url, '_blank');
+  mostrarToast('Borrador abierto en Gmail — revisá antes de enviar', 'ok');
+}
+
+async function marcarCartaEnviada(idRegistro) {
+  if (!confirm('¿Marcar la carta como enviada a la DT? Esto solo actualiza el registro.')) return;
+  try {
+    const res = await fetch(GAS_URL, { method:'POST', body: JSON.stringify({
+      local: LOCAL, accion: 'guardarRegistro', id_registro: idRegistro, carta_dt: true
+    })});
+    const data = await res.json();
+    if (data.ok) { mostrarToast('Marcado ✓', 'ok'); cargarRegistros(); }
+    else mostrarToast(data.error || 'Error', 'err');
+  } catch(e) { mostrarToast('Error de conexión', 'err'); }
+}
+
 function abrirModalEstado(id_turno, nombre, estadoActual) {
   if (userRol === 'READONLY') return;
   const nuevo = prompt(`Estado de ${nombre}:\n1=NORMAL  2=TARDE  3=AUSENTE  4=PERMISO\nActual: ${estadoActual}\n\nIngresa número:`);
@@ -2770,6 +3006,7 @@ function cambiarTab(tab) {
   if (tab === 'hoy')       cargarHoy();
   if (tab === 'semana')    cargarSemana();
   if (tab === 'personal')  cargarPersonal();
+  if (tab === 'registros') cargarRegistros();
 }
 
 function cambiarMes(dir) {
