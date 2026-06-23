@@ -398,6 +398,8 @@
     max-width: 480px;
     max-height: 92vh;
     overflow-y: auto;
+    scrollbar-width: none;          /* Firefox: sin barra */
+    -ms-overflow-style: none;       /* IE/Edge viejo */
     animation: slideUp 0.25s ease;
   }
   @keyframes slideUp {
@@ -524,6 +526,7 @@
     gap: 10px;
     margin-top: 20px;
   }
+  .modal::-webkit-scrollbar { display: none; }   /* Chrome/Safari: sin barra */
   .btn {
     padding: 12px;
     border-radius: var(--radius);
@@ -1913,13 +1916,17 @@ function actualizarHintMulti() {
   });
   const btnMulti = document.getElementById('btnEliminarMulti');
   const cnt = document.getElementById('cntEliminarMulti');
+  const btnQuitar = document.getElementById('btnEliminar');
   if (btnMulti && cnt) {
     // Mostrar solo si hay 2+ días marcados y al menos 1 con turno
     if (diasMultiSel.size >= 2 && conTurno.length >= 1) {
       btnMulti.style.display = 'block';
       cnt.textContent = conTurno.length;
+      if (btnQuitar) btnQuitar.style.display = 'none';   // sustituye a "Quitar turno"
     } else {
       btnMulti.style.display = 'none';
+      // restaurar "Quitar turno" si hay turno en el día base
+      if (btnQuitar) btnQuitar.style.display = modalData.turnoExistente ? 'block' : 'none';
     }
   }
 }
