@@ -235,6 +235,8 @@
     min-width: 46px;
   }
   .grilla-header .col-dia.domingo { color: var(--rojo); }
+  .grilla-header .col-dia.otro-mes { opacity: 0.55; background: rgba(255,255,255,0.02); }
+  .celda.otro-mes { opacity: 0.7; background: rgba(255,255,255,0.015); }
   .grilla-header .col-dia .num-dia {
     font-size: 11px;
     color: var(--blanco);
@@ -1295,6 +1297,7 @@ let mesActual   = new Date().getMonth() + 1;
 let anioActual  = new Date().getFullYear();
 let semanaActual= getLunes(new Date());
 let semanaVista = null;   // null = mes completo; si no, lunes de la semana mostrada
+let turnosBorde = [];     // turnos de meses vecinos (para semanas a caballo)
 
 // Modal state
 let modalData   = { id_personal: null, fecha: null, turnoExistente: null };
@@ -1580,13 +1583,26 @@ async function cargarTurnosMes() {
     '<div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando turnos...</div></div>';
 
   try {
-    const [resPersonal, resTurnos] = await Promise.all([
+    // Mes anterior y siguiente (para semanas a caballo entre meses)
+    const mesPrev = mesActual === 1 ? 12 : mesActual - 1;
+    const anioPrev = mesActual === 1 ? anioActual - 1 : anioActual;
+    const mesNext = mesActual === 12 ? 1 : mesActual + 1;
+    const anioNext = mesActual === 12 ? anioActual + 1 : anioActual;
+
+    const [resPersonal, resTurnos, resPrev, resNext] = await Promise.all([
       fetch(`${GAS_URL}?local=${LOCAL}&accion=getPersonal`).then(r=>r.json()),
-      fetch(`${GAS_URL}?local=${LOCAL}&accion=getTurnos&mes=${mesActual}&anio=${anioActual}`).then(r=>r.json())
+      fetch(`${GAS_URL}?local=${LOCAL}&accion=getTurnos&mes=${mesActual}&anio=${anioActual}`).then(r=>r.json()),
+      fetch(`${GAS_URL}?local=${LOCAL}&accion=getTurnos&mes=${mesPrev}&anio=${anioPrev}`).then(r=>r.json()),
+      fetch(`${GAS_URL}?local=${LOCAL}&accion=getTurnos&mes=${mesNext}&anio=${anioNext}`).then(r=>r.json())
     ]);
 
     personal   = resPersonal.personal  || [];
     turnosMes  = resTurnos.turnos      || [];
+
+    // Guardar los días de borde (lunes/domingo) de meses vecinos para semanas a caballo
+    turnosBorde = []
+      .concat(resPrev.turnos || [])
+      .concat(resNext.turnos || []);
 
     // Reinyectar turnos pendientes (cola) que aún no se han enviado
     Object.values(colaPendientes).forEach(t => {
@@ -1711,18 +1727,23 @@ function renderGrilla() {
 
   renderWeekSelector();
 
-  // Determinar qué días mostrar
+  // Determinar qué días mostrar.
+  // dias[] = array de objetos Date (fechas completas), no números, para
+  // soportar semanas a caballo entre dos meses.
   let dias = [];
-  for (let d = 1; d <= diasEnMes; d++) dias.push(d);
   let anchoCelda = 46;
   if (semanaVista) {
-    // solo los días de esa semana que caen en el mes visible
-    dias = [];
+    // los 7 días de la semana, aunque alguno caiga en otro mes
     for (let i = 0; i < 7; i++) {
       const f = new Date(semanaVista); f.setDate(semanaVista.getDate() + i);
-      if (f.getMonth() + 1 === mesActual && f.getFullYear() === anioActual) dias.push(f.getDate());
+      f.setHours(12,0,0,0);
+      dias.push(f);
     }
-    anchoCelda = 104;   // celdas más anchas en vista semana
+    anchoCelda = 104;
+  } else {
+    for (let d = 1; d <= diasEnMes; d++) {
+      dias.push(new Date(anioActual, mesActual - 1, d, 12, 0, 0));
+    }
   }
 
   const colWidth = `120px repeat(${dias.length}, ${anchoCelda}px)`;
@@ -1730,13 +1751,13 @@ function renderGrilla() {
   // Header
   let headerHtml = `<div class="grilla-header" style="grid-template-columns:${colWidth}">
     <div class="col-nombre">Personal</div>`;
-  dias.forEach(d => {
-    const fecha  = new Date(anioActual, mesActual - 1, d);
+  dias.forEach(fecha => {
     const diaSem = fecha.getDay();
     const esHoy  = fecha.toDateString() === hoy.toDateString();
-    headerHtml  += `<div class="col-dia${diaSem===0?' domingo':''}${esHoy?' hoy':''}">
-      <span class="num-dia">${d}</span>
-      ${DIAS_ES[diaSem].charAt(0)}
+    const otroMes = (fecha.getMonth() + 1 !== mesActual);   // día de mes vecino
+    headerHtml  += `<div class="col-dia${diaSem===0?' domingo':''}${esHoy?' hoy':''}${otroMes?' otro-mes':''}">
+      <span class="num-dia">${fecha.getDate()}</span>
+      ${DIAS_ES[diaSem].charAt(0)}${otroMes?`<span style="font-size:8px;display:block;opacity:.6">${MESES_ES[fecha.getMonth()].slice(0,3)}</span>`:''}
     </div>`;
   });
   headerHtml += '</div>';
@@ -1779,11 +1800,15 @@ function renderGrilla() {
         ${bloqueHoras}
       </div>`;
 
-    dias.forEach(d => {
-      const fecha     = new Date(anioActual, mesActual - 1, d);
+    dias.forEach(fecha => {
       const fechaStr  = formatFecha(fecha);
       const esDomingo = fecha.getDay() === 0;
-      const turno     = turnosP.find(t => t.FECHA === fechaStr);
+      const otroMes   = (fecha.getMonth() + 1 !== mesActual);
+      // turno del mes actual, o de meses vecinos si el día es de otro mes
+      let turno = turnosP.find(t => t.FECHA === fechaStr);
+      if (!turno && otroMes) {
+        turno = turnosBorde.find(t => t.FECHA === fechaStr && t.ID_PERSONAL == p.ID_PERSONAL);
+      }
 
       let innerClass = 'vacia';
       let letra = '', sec = '', horaTxt = '', tooltip = '';
@@ -1822,7 +1847,7 @@ function renderGrilla() {
         ? `onclick="abrirModalTurno('${p.ID_PERSONAL}','${p.NOMBRE}','${fechaStr}')"`
         : '';
 
-      filasHtml += `<div class="celda${esDomingo?' domingo':''}" ${onclick} title="${tooltip}">
+      filasHtml += `<div class="celda${esDomingo?' domingo':''}${otroMes?' otro-mes':''}" ${onclick} title="${tooltip}">
         <div class="celda-inner ${innerClass}${anchoCelda>=100?' wide':''}">
           <span class="turno-letra">${letra}</span>
           ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
