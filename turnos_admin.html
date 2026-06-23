@@ -2526,94 +2526,57 @@ async function guardarTurno() {
   const p = personal.find(p => p.ID_PERSONAL == modalData.id_personal);
   if (!p) return;
 
-  const turnoVal = document.getElementById('selTurno').value;
-  const nombreVal = modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE;
+  // Encolar el día base (con modo correcto, alias si operativo)
+  encolarTurnoActual();
 
-  // Día libre = se guarda como registro con TURNO vacío (aparece "LIBRE")
-  // Esto permite que el sistema sepa quién está libre (validación + generador).
-  const esLibre = !turnoVal;
-
-  // Garantizar horas: si las casillas están vacías, usar las del turno elegido
-  let hEntrada = document.getElementById('inputEntrada').value;
-  let hSalida  = document.getElementById('inputSalida').value;
-  if (esLibre) {
-    hEntrada = ''; hSalida = '';
-  } else if (!hEntrada || !hSalida) {
-    const def = turnosDef.find(t => t.codigo === turnoVal);
-    if (def) { hEntrada = hEntrada || def.entrada; hSalida = hSalida || def.salida; }
-  }
-
-  const comun = {
-    local:        LOCAL,
-    id_personal:  modalData.id_personal,
-    nombre:       nombreVal,
-    turno:        turnoVal,
-    hora_entrada: hEntrada,
-    hora_salida:  hSalida,
-    seccion:      document.getElementById('selSeccion').value,
-    estado:       document.getElementById('selEstado').value,
-    modo:         modoActual,
-    notas:        document.getElementById('inputNotas').value
-  };
-
+  // Si hay varios días seleccionados en los chips, encolar también esos
   const fechas = Array.from(diasMultiSel).sort();
-
-  // ── Caso 1 día: guardarTurno (igual que antes) ──
-  if (fechas.length <= 1) {
-    const payload = Object.assign({ accion:'guardarTurno', fecha: modalData.fecha }, comun);
-    try {
-      const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (data.ok) {
-        if (data.advertencia) {
-          mostrarToast('Guardado ⚠️ ' + data.advertencia, 'warn');
-        } else {
-          mostrarToast('Turno guardado ✓', 'ok');
-        }
-        cerrarModalBtn();
-        cargarTurnosMes();
-      } else {
-        mostrarToast(data.error || 'Error al guardar', 'err');
-      }
-    } catch(e) {
-      mostrarToast('Error de conexión', 'err');
+  if (fechas.length > 1) {
+    const turnoVal = document.getElementById('selTurno').value;
+    const nombreVal = modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE;
+    let hEntrada = document.getElementById('inputEntrada').value;
+    let hSalida  = document.getElementById('inputSalida').value;
+    if (!turnoVal) { hEntrada=''; hSalida=''; }
+    else if (!hEntrada || !hSalida) {
+      const def = turnosDef.find(t => t.codigo === turnoVal);
+      if (def) { hEntrada = hEntrada || def.entrada; hSalida = hSalida || def.salida; }
     }
-    return;
+    const op = modoActual === 'OPERATIVO';
+    fechas.forEach(f => {
+      if (f === modalData.fecha) return; // ya encolado
+      const t = {
+        ID_TURNO: null, FECHA: f, ID_PERSONAL: modalData.id_personal,
+        NOMBRE: nombreVal, TURNO: turnoVal, HORA_ENTRADA: hEntrada, HORA_SALIDA: hSalida,
+        SECCION: document.getElementById('selSeccion').value,
+        ESTADO: document.getElementById('selEstado').value,
+        MODO: modoActual, NOTAS: document.getElementById('inputNotas').value, _pendiente: true
+      };
+      const clave = f + '|' + modalData.id_personal + (op ? '|OPERATIVO' : '');
+      colaPendientes[clave] = t;
+      const i = turnosMes.findIndex(x => x.FECHA===f && x.ID_PERSONAL==modalData.id_personal && claveModo(x)===(op?'|OPERATIVO':''));
+      if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
+    });
   }
 
-  // ── Caso varios días: guardarTurnosLote ──
-  const payload = Object.assign({ accion:'guardarTurnosLote', fechas: fechas }, comun);
-  try {
-    mostrarToast(`Guardando ${fechas.length} días…`, 'warn');
-    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (data.ok) {
-      mostrarToast(`${data.guardados} turnos guardados ✓`, 'ok');
-      cerrarModalBtn();
-      cargarTurnosMes();
-    } else if (data.guardados > 0) {
-      mostrarToast(`${data.guardados} guardados, ${data.rechazados} rechazados (límite legal)`, 'warn');
-      cerrarModalBtn();
-      cargarTurnosMes();
-    } else {
-      mostrarToast(data.error || 'Ninguno guardado', 'err');
-    }
-  } catch(e) {
-    mostrarToast('Error de conexión', 'err');
-  }
+  cerrarModalBtn();
+  await guardarTodo();   // envía TODA la cola (genera ID_DT, limpia pendientes)
 }
 
 async function eliminarTurno() {
   const te = modalData.turnoExistente;
   if (!te) { cerrarModalBtn(); return; }
 
+  // Capa según si abrimos desde fila DT (operativo) u oficial
+  const esOp = !!modalData.forzarOperativo
+            || String(te.MODO||'OFICIAL').toUpperCase() === 'OPERATIVO';
+  const sufijo = esOp ? '|OPERATIVO' : '';
+
   // Caso 1: el turno solo está en la cola (pendiente, no guardado aún)
-  const clave = modalData.fecha + '|' + modalData.id_personal;
+  const clave = modalData.fecha + '|' + modalData.id_personal + sufijo;
   const soloPendiente = !te.ID_TURNO || te._pendiente;
   if (soloPendiente && colaPendientes[clave]) {
     delete colaPendientes[clave];
-    // quitarlo de turnosMes para que desaparezca de la grilla
-    const i = turnosMes.findIndex(x => x.FECHA === modalData.fecha && x.ID_PERSONAL == modalData.id_personal);
+    const i = turnosMes.findIndex(x => x.FECHA === modalData.fecha && x.ID_PERSONAL == modalData.id_personal && claveModo(x) === sufijo);
     if (i >= 0 && turnosMes[i]._pendiente) turnosMes.splice(i, 1);
     cerrarModalBtn();
     renderGrilla();
