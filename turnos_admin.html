@@ -1321,8 +1321,8 @@
     </div>
 
     <div style="font-size:11px;color:var(--gris4);margin-bottom:8px;line-height:1.4">
-      El registro queda en el historial. Para enviar carta a la DT, usá el botón
-      "Preparar carta DT" en la pestaña Registros — la revisás antes de enviar.
+      El registro queda en el historial. Para solicitar la carta de amonestación, usá el botón
+      "Carta RRHH" en la pestaña Registros — la revisás antes de enviar.
     </div>
 
     <div class="modal-actions">
@@ -2713,42 +2713,51 @@ function pintarRegistros(registros) {
     return `<div class="personal-card" style="${grave?'border-left:3px solid var(--ausente)':''}">
       <div class="personal-info" style="flex:1">
         <div class="personal-nombre">${iconos[String(r.TIPO).toUpperCase()]||'•'} ${r.NOMBRE} <span style="font-size:11px;color:var(--gris4)">· ${r.FECHA}</span></div>
-        <div class="personal-meta">${etiquetaLegible(r.TIPO)} · ${etiquetaLegible(r.GRAVEDAD)}${cartaEnviada?' · 📨 carta DT enviada '+(r.FECHA_CARTA||''):''}</div>
+        <div class="personal-meta">${etiquetaLegible(r.TIPO)} · ${etiquetaLegible(r.GRAVEDAD)}${cartaEnviada?' · 📨 carta enviada a RRHH '+(r.FECHA_CARTA||''):''}</div>
         <div style="font-size:12px;color:var(--blanco);margin-top:4px">${r.DESCRIPCION||''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-        <button class="btn-mini" onclick="prepararCartaDT(${idx})" title="Preparar email a la DT">📨 Carta DT</button>
+        <button class="btn-mini" onclick="prepararCartaDT(${idx})" title="Preparar email a RRHH">📨 Carta RRHH</button>
         ${cartaEnviada?'':`<button class="btn-mini" onclick="marcarCartaEnviada('${r.ID_REGISTRO}')" title="Marcar carta como enviada" style="opacity:.7">✓ marcar enviada</button>`}
       </div>
     </div>`;
   }).join('');
 }
 
-// ── Preparar carta a la DT: abre Gmail con borrador precargado ──
+// ── Preparar carta a RRHH: abre Gmail con borrador precargado ──
+// La empresa NO comunica directo a la DT: instruye a RRHH para que emita
+// la carta de amonestación al trabajador y la presente en la Inspección si corresponde.
 function prepararCartaDT(idx) {
   const r = registrosCache[idx];
   if (!r) return;
-  const emailDT = parametros.EMAIL_DT || '';
-  const copia   = parametros.EMAIL_COPIA_RRHH || '';
-  const localNom = (parametros.LOCAL || LOCAL).toUpperCase();
+  // El destinatario sale de PARAMETROS. Aceptamos EMAIL_RRHH (nuevo) o EMAIL_DT (compat).
+  const emailRRHH = parametros.EMAIL_RRHH || parametros.EMAIL_DT || '';
+  const copia     = parametros.EMAIL_COPIA_RRHH || '';
+  const localNom  = (parametros.LOCAL || LOCAL).toUpperCase();
+  const grave     = String(r.GRAVEDAD).toUpperCase() === 'GRAVE';
 
-  const asunto = `Comunicación de ${etiquetaLegible(r.TIPO)} — ${r.NOMBRE} (RUT ${r.RUT||'s/RUT'})`;
+  const asunto = `Solicitud de carta de amonestación — ${r.NOMBRE} (RUT ${r.RUT||'s/RUT'})`;
   const cuerpo =
-`Señores Dirección del Trabajo:
+`Estimado Departamento de RRHH:
 
-Por medio de la presente, la empresa comunica el siguiente registro disciplinario:
+Se registra la siguiente incidencia y se solicita emitir la correspondiente carta de amonestación al trabajador, y presentarla ante la Inspección del Trabajo si corresponde según la gravedad y la normativa vigente.
 
 • Trabajador: ${r.NOMBRE}
 • RUT: ${r.RUT || '(sin RUT)'}
 • Local: ${localNom}
 • Tipo de incidencia: ${etiquetaLegible(r.TIPO)}
-• Gravedad: ${etiquetaLegible(r.GRAVEDAD)}
+• Gravedad: ${etiquetaLegible(r.GRAVEDAD)}${grave ? '  ⚠️ (requiere atención prioritaria)' : ''}
 • Fecha del hecho: ${r.FECHA}
 
 Descripción de los hechos:
 ${r.DESCRIPCION || ''}
 
-Quedamos a disposición para cualquier antecedente adicional.
+Solicito:
+1) Emitir la carta de amonestación al trabajador conforme al Reglamento Interno.
+2) Evaluar si corresponde dejar constancia en la Inspección del Trabajo respectiva.
+3) Confirmar a este local una vez gestionado.
+
+Quedo a disposición para cualquier antecedente adicional.
 
 Atentamente,
 ${userEmail || ''}
@@ -2759,7 +2768,7 @@ BORRADOR generado por el sistema. Revisar antes de enviar.`;
 
   const params = new URLSearchParams({
     view: 'cm', fs: '1',
-    to: emailDT,
+    to: emailRRHH,
     su: asunto,
     body: cuerpo
   });
