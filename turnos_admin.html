@@ -237,17 +237,17 @@
   .grilla-header .col-dia.domingo { color: var(--rojo); }
   .grilla-header .col-dia.otro-mes { opacity: 0.55; background: rgba(255,255,255,0.02); }
   .celda.otro-mes { opacity: 0.7; background: rgba(255,255,255,0.015); }
-  .badge-dt {
-    position: absolute;
-    top: -4px; right: -4px;
-    background: var(--operativo, #f39c12);
-    color: #1a1a1a;
-    font-size: 7px;
-    font-weight: 800;
-    padding: 1px 3px;
-    border-radius: 4px;
-    line-height: 1;
-    z-index: 2;
+  /* Fila de doble turno (DT): subordinada visualmente a la fila oficial */
+  .grilla-fila.fila-dt {
+    background: rgba(243,156,18,0.04);
+    border-top: 1px dashed rgba(243,156,18,0.25);
+  }
+  .grilla-fila.fila-dt .nombre-principal {
+    font-size: 11px;
+    color: var(--operativo, #f39c12);
+  }
+  .grilla-fila.fila-dt .nombre-rol {
+    color: rgba(243,156,18,0.6);
   }
   .celda-inner { position: relative; }
   .grilla-header .col-dia .num-dia {
@@ -1690,10 +1690,14 @@ async function cargarTurnosMes() {
       .concat(resPrev.turnos || [])
       .concat(resNext.turnos || []);
 
-    // Reinyectar turnos pendientes (cola) que aún no se han enviado
+    // Reinyectar turnos pendientes (cola), respetando la capa (oficial/operativo)
     Object.values(colaPendientes).forEach(t => {
-      if (t._borrar) return;   // los marcados para borrar no se pintan
-      const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
+      if (t._borrar) return;
+      const tOp = String(t.MODO||'OFICIAL').toUpperCase() === 'OPERATIVO';
+      const i = turnosMes.findIndex(x =>
+        x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL &&
+        (String(x.MODO||'OFICIAL').toUpperCase() === 'OPERATIVO') === tOp
+      );
       if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
     });
 
@@ -1853,101 +1857,122 @@ function renderGrilla() {
 
   let filasHtml = '';
   personal.forEach(p => {
-    const turnosP  = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
-    const horasSem = horasDeLaSemana(turnosP, lunesRef);   // horas trabajadas (netas)
-    const limiteP  = limiteHoras(p);
-    const colMinSem= colacionDeLaSemana(turnosP, lunesRef);
-    const colHoras = Math.round(colMinSem/60*10)/10;
-    const presencia= Math.round((horasSem + colHoras)*10)/10; // lo que "está" en el local
-    const delta    = Math.round((horasSem - limiteP)*10)/10;  // scostamento dal limite
+    const turnosP = turnosMes.filter(t => t.ID_PERSONAL == p.ID_PERSONAL);
 
-    // Bloque de horas:
-    //   grande = horas de PRESENCIA (trabajadas + colación) — dato neutro
-    //   colación = resaltada (parte de la presencia que no computa)
-    //   alerta roja SOLO si las horas trabajadas superan/no llegan al límite
-    let bloqueHoras = '';
+    // Fila OFICIAL (turnos normales: todo lo que NO es operativo)
+    filasHtml += renderFilaPersona(p, turnosP, dias, colWidth, anchoCelda, lunesRef, mesActual, 'OFICIAL');
+
+    // Fila DT (doble turno): solo si la persona tiene turnos operativos este mes
+    const tieneDobles = turnosP.some(t => String(t.MODO||'').toUpperCase() === 'OPERATIVO')
+      || turnosBorde.some(t => t.ID_PERSONAL == p.ID_PERSONAL && String(t.MODO||'').toUpperCase() === 'OPERATIVO');
+    if (tieneDobles) {
+      filasHtml += renderFilaPersona(p, turnosP, dias, colWidth, anchoCelda, lunesRef, mesActual, 'OPERATIVO');
+    }
+  });
+
+  grilla.innerHTML = headerHtml + filasHtml;
+}
+
+// Dibuja UNA fila de la grilla para una persona, filtrando por capa:
+// capa='OFICIAL' -> turnos normales | capa='OPERATIVO' -> dobles turnos (DT)
+function renderFilaPersona(p, turnosP, dias, colWidth, anchoCelda, lunesRef, mesActual, capa) {
+  const esDT = capa === 'OPERATIVO';
+  let filasHtml = '';
+
+  // Bloque de horas: solo en la fila oficial (las horas DT no cuentan en las 42h)
+  let bloqueHoras = '';
+  if (!esDT) {
+    const turnosOf = turnosP.filter(t => String(t.MODO||'OFICIAL').toUpperCase() !== 'OPERATIVO');
+    const horasSem = horasDeLaSemana(turnosOf, lunesRef);
+    const limiteP  = limiteHoras(p);
+    const colMinSem= colacionDeLaSemana(turnosOf, lunesRef);
+    const colHoras = Math.round(colMinSem/60*10)/10;
+    const presencia= Math.round((horasSem + colHoras)*10)/10;
+    const delta    = Math.round((horasSem - limiteP)*10)/10;
     if (horasSem === 0) {
       bloqueHoras = `<div class="h-presencia vacio">—</div>`;
     } else {
       let alertaTxt, alertaCls;
-      if (Math.abs(delta) < 0.1)      { alertaTxt = `${horasSem}h trab. · ok`;          alertaCls = 'ok'; }
-      else if (delta > 0)             { alertaTxt = `${horasSem}h trab. · +${delta}`;    alertaCls = 'danger'; }
-      else                            { alertaTxt = `${horasSem}h trab. · ${delta}`;     alertaCls = 'under'; }
+      if (Math.abs(delta) < 0.1)      { alertaTxt = `${horasSem}h trab. · ok`;       alertaCls = 'ok'; }
+      else if (delta > 0)             { alertaTxt = `${horasSem}h trab. · +${delta}`; alertaCls = 'danger'; }
+      else                            { alertaTxt = `${horasSem}h trab. · ${delta}`;  alertaCls = 'under'; }
       bloqueHoras =
         `<div class="h-presencia">${presencia}h</div>
          ${colHoras > 0 ? `<div class="h-colacion">incl. ${colHoras}h colación</div>` : ''}
          <div class="h-delta ${alertaCls}">${alertaTxt}</div>`;
     }
+  }
 
-    filasHtml += `<div class="grilla-fila" style="grid-template-columns:${colWidth}">
-      <div class="col-nombre">
-        <div class="nombre-principal" title="${p.NOMBRE}">${p.NOMBRE}</div>
-        <div class="nombre-rol">${etiquetaRol(p)}</div>
-        ${bloqueHoras}
-      </div>`;
+  // Cabecera de la fila (nombre o alias para DT)
+  const nombreMostrar = esDT ? ((p.ALIAS || p.NOMBRE) + ' · DT') : p.NOMBRE;
+  const rolMostrar    = esDT ? 'doble turno (extra)' : etiquetaRol(p);
+  filasHtml += `<div class="grilla-fila${esDT?' fila-dt':''}" style="grid-template-columns:${colWidth}">
+    <div class="col-nombre">
+      <div class="nombre-principal" title="${nombreMostrar}">${nombreMostrar}</div>
+      <div class="nombre-rol">${rolMostrar}</div>
+      ${bloqueHoras}
+    </div>`;
 
-    dias.forEach(fecha => {
-      const fechaStr  = formatFecha(fecha);
-      const esDomingo = fecha.getDay() === 0;
-      const otroMes   = (fecha.getMonth() + 1 !== mesActual);
-      // turnos de ese día (puede haber OFICIAL + OPERATIVO = doble turno)
-      let turnosDia = turnosP.filter(t => t.FECHA === fechaStr);
-      if (!turnosDia.length && otroMes) {
-        turnosDia = turnosBorde.filter(t => t.FECHA === fechaStr && t.ID_PERSONAL == p.ID_PERSONAL);
-      }
-      // mostrar el OFICIAL si existe; si no, el primero
-      let turno = turnosDia.find(t => String(t.MODO||'OFICIAL').toUpperCase() !== 'OPERATIVO') || turnosDia[0] || null;
-      const tieneDoble = turnosDia.some(t => String(t.MODO||'').toUpperCase() === 'OPERATIVO');
+  dias.forEach(fecha => {
+    const fechaStr  = formatFecha(fecha);
+    const esDomingo = fecha.getDay() === 0;
+    const otroMes   = (fecha.getMonth() + 1 !== mesActual);
+    let turnosDia = turnosP.filter(t => t.FECHA === fechaStr);
+    if (!turnosDia.length && otroMes) {
+      turnosDia = turnosBorde.filter(t => t.FECHA === fechaStr && t.ID_PERSONAL == p.ID_PERSONAL);
+    }
+    // filtrar por capa
+    const turno = turnosDia.find(t => {
+      const op = String(t.MODO||'OFICIAL').toUpperCase() === 'OPERATIVO';
+      return esDT ? op : !op;
+    }) || null;
 
-      let innerClass = 'vacia';
-      let letra = '', sec = '', horaTxt = '', tooltip = '';
+    let innerClass = 'vacia';
+    let letra = '', sec = '', horaTxt = '', tooltip = '';
 
-      if (turno) {
-        const modo   = (turno.MODO||'OFICIAL').toLowerCase();
-        const estado = (turno.ESTADO||'NORMAL').toLowerCase();
-        const codTurno = String(turno.TURNO || '').toUpperCase();
-        const esLibre = codTurno === 'LIBRE';
-        const esVacio = !turno.TURNO || turno.TURNO === '';
-        if (esLibre)                    { innerClass = 'libre'; letra = 'LIBRE'; }
-        else if (esVacio)               { innerClass = 'libre'; letra = 'LIBRE'; }  // retrocompat filas viejas
-        else if (estado === 'ausente')  innerClass = 'ausente';
-        else if (estado === 'tarde')    innerClass = 'tarde';
-        else if (estado === 'permiso')  innerClass = 'permiso';
-        else if (modo === 'operativo')  innerClass = 'operativo';
-        else                            innerClass = claseColorTurno(turno.TURNO);
+    if (turno) {
+      const modo   = (turno.MODO||'OFICIAL').toLowerCase();
+      const estado = (turno.ESTADO||'NORMAL').toLowerCase();
+      const codTurno = String(turno.TURNO || '').toUpperCase();
+      const esLibre = codTurno === 'LIBRE';
+      const esVacio = !turno.TURNO || turno.TURNO === '';
+      if (esLibre)                    { innerClass = 'libre'; letra = 'LIBRE'; }
+      else if (esVacio)               { innerClass = 'libre'; letra = 'LIBRE'; }
+      else if (estado === 'ausente')  innerClass = 'ausente';
+      else if (estado === 'tarde')    innerClass = 'tarde';
+      else if (estado === 'permiso')  innerClass = 'permiso';
+      else if (esDT)                  innerClass = 'operativo';
+      else                            innerClass = claseColorTurno(turno.TURNO);
 
-        if (turno._pendiente) innerClass += ' pendiente';
+      if (turno._pendiente) innerClass += ' pendiente';
 
-        const noEsTurnoReal = esLibre || esVacio;
-
-        if (!noEsTurnoReal) {
-          letra = abreviarTurno(turno.TURNO);
-          sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
-          const hE = horaCorta(turno.HORA_ENTRADA);
-          const hS = horaCorta(turno.HORA_SALIDA);
-          if (hE && hS) {
-            horaTxt = anchoCelda >= 100 ? `${hE} - ${hS}` : `${hE}<br>${hS}`;
-            tooltip = `${turno.NOMBRE} · ${hE}-${hS}${sec?(' · '+turno.SECCION):''}`;
-          }
+      const noEsTurnoReal = esLibre || esVacio;
+      if (!noEsTurnoReal) {
+        letra = abreviarTurno(turno.TURNO);
+        sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
+        const hE = horaCorta(turno.HORA_ENTRADA);
+        const hS = horaCorta(turno.HORA_SALIDA);
+        if (hE && hS) {
+          horaTxt = anchoCelda >= 100 ? `${hE} - ${hS}` : `${hE}<br>${hS}`;
+          tooltip = `${turno.NOMBRE} · ${hE}-${hS}${sec?(' · '+turno.SECCION):''}`;
         }
       }
+    }
 
-      const onclick = userRol !== 'READONLY'
-        ? `onclick="abrirModalTurno('${p.ID_PERSONAL}','${p.NOMBRE}','${fechaStr}')"`
-        : '';
+    // onclick: la fila DT abre el modal ya en modo OPERATIVO
+    const onclick = userRol !== 'READONLY'
+      ? `onclick="abrirModalTurno('${p.ID_PERSONAL}','${p.NOMBRE}','${fechaStr}'${esDT?",'OPERATIVO'":''})"`
+      : '';
 
-      filasHtml += `<div class="celda${esDomingo?' domingo':''}${otroMes?' otro-mes':''}" ${onclick} title="${tooltip}">
-        <div class="celda-inner ${innerClass}${anchoCelda>=100?' wide':''}">
-          ${tieneDoble ? '<span class="badge-dt" title="Doble turno (operativo)">DT</span>' : ''}
-          <span class="turno-letra">${letra}</span>
-          ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
-        </div>
-      </div>`;
-    });
-    filasHtml += '</div>';
+    filasHtml += `<div class="celda${esDomingo?' domingo':''}${otroMes?' otro-mes':''}" ${onclick} title="${tooltip}">
+      <div class="celda-inner ${innerClass}${anchoCelda>=100?' wide':''}">
+        <span class="turno-letra">${letra}</span>
+        ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
+      </div>
+    </div>`;
   });
-
-  grilla.innerHTML = headerHtml + filasHtml;
+  filasHtml += '</div>';
+  return filasHtml;
 }
 
 // ══════════════════════════════════════
@@ -2077,14 +2102,21 @@ function renderPersonal() {
 // ══════════════════════════════════════
 // MODAL TURNO
 // ══════════════════════════════════════
-function abrirModalTurno(id_personal, nombre, fechaStr) {
-  // Prioridad: pendiente en cola > turno ya guardado en hoja
-  const pend  = colaPendientes[fechaStr + '|' + id_personal];
-  const turno = pend || turnosMes.find(t => t.ID_PERSONAL == id_personal && t.FECHA === fechaStr);
+function abrirModalTurno(id_personal, nombre, fechaStr, modoForzado) {
+  const esDT = String(modoForzado || '').toUpperCase() === 'OPERATIVO';
+  // Buscar el turno de la CAPA correcta (operativo si es fila DT, oficial si no)
+  const claveCola = fechaStr + '|' + id_personal + (esDT ? '|OPERATIVO' : '');
+  const pend  = colaPendientes[claveCola];
+  const turno = pend || turnosMes.find(t => {
+    if (t.ID_PERSONAL != id_personal || t.FECHA !== fechaStr) return false;
+    const op = String(t.MODO||'OFICIAL').toUpperCase() === 'OPERATIVO';
+    return esDT ? op : !op;
+  });
   modalData   = {
     id_personal, fecha: fechaStr,
     turnoExistente: turno || null,
-    idxPersonal: personal.findIndex(p => p.ID_PERSONAL == id_personal)
+    idxPersonal: personal.findIndex(p => p.ID_PERSONAL == id_personal),
+    forzarOperativo: esDT
   };
 
   const fecha = new Date(fechaStr + 'T12:00:00');
@@ -2104,13 +2136,13 @@ function abrirModalTurno(id_personal, nombre, fechaStr) {
   document.getElementById('selEstado').value          = turno?.ESTADO || 'NORMAL';
   document.getElementById('btnEliminar').style.display = turno ? 'block' : 'none';
 
-  setModo(turno?.MODO || 'OFICIAL');
+  // Modo: forzado a OPERATIVO si abrimos desde la fila DT
+  setModo(esDT ? 'OPERATIVO' : (turno?.MODO || 'OFICIAL'));
   poblarSecciones('selSeccion');
   document.getElementById('selSeccion').value = turno?.SECCION || '';
 
-  // Si la celda está vacía y venimos de "Guardar y siguiente",
-  // precargar el último turno usado para repetir a clicks.
-  if (!turno && ultimoTurnoUsado) {
+  // Precarga de "Guardar y siguiente" solo en fila oficial
+  if (!turno && !esDT && ultimoTurnoUsado) {
     document.getElementById('selTurno').value     = ultimoTurnoUsado.turno   || '';
     document.getElementById('inputEntrada').value = ultimoTurnoUsado.entrada || '';
     document.getElementById('inputSalida').value  = ultimoTurnoUsado.salida  || '';
@@ -2194,9 +2226,18 @@ function cerrarModalBtn() {
 }
 
 function setModo(modo) {
+  // Si el modal está en modo DT forzado, no permitir volver a OFICIAL
+  if (modalData && modalData.forzarOperativo) modo = 'OPERATIVO';
   modoActual = modo;
   document.getElementById('btnOficial').classList.toggle('active',   modo === 'OFICIAL');
   document.getElementById('btnOperativo').classList.toggle('active', modo === 'OPERATIVO');
+  // En fila DT, deshabilitar visualmente el botón Oficial
+  const btnOf = document.getElementById('btnOficial');
+  if (btnOf) {
+    const bloq = !!(modalData && modalData.forzarOperativo);
+    btnOf.style.opacity = bloq ? '0.4' : '1';
+    btnOf.style.pointerEvents = bloq ? 'none' : 'auto';
+  }
   // Aviso de doble turno cuando es operativo
   let aviso = document.getElementById('avisoOperativo');
   if (!aviso) {
