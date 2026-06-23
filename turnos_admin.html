@@ -237,6 +237,19 @@
   .grilla-header .col-dia.domingo { color: var(--rojo); }
   .grilla-header .col-dia.otro-mes { opacity: 0.55; background: rgba(255,255,255,0.02); }
   .celda.otro-mes { opacity: 0.7; background: rgba(255,255,255,0.015); }
+  .badge-dt {
+    position: absolute;
+    top: -4px; right: -4px;
+    background: var(--operativo, #f39c12);
+    color: #1a1a1a;
+    font-size: 7px;
+    font-weight: 800;
+    padding: 1px 3px;
+    border-radius: 4px;
+    line-height: 1;
+    z-index: 2;
+  }
+  .celda-inner { position: relative; }
   .grilla-header .col-dia .num-dia {
     font-size: 11px;
     color: var(--blanco);
@@ -1016,6 +1029,7 @@
     <div class="tab"        onclick="cambiarTab('semana')"     id="tab-semana">Semana</div>
     <div class="tab jl-only" onclick="cambiarTab('personal')"  id="tab-personal">Personal</div>
     <div class="tab jl-only" onclick="cambiarTab('registros')" id="tab-registros">Registros</div>
+    <div class="tab jl-only" onclick="cambiarTab('dobles')"    id="tab-dobles">Dobles</div>
   </div>
 
   <!-- ── PANEL: TURNOS MES ── -->
@@ -1091,6 +1105,17 @@
     </div>
     <div id="registrosLista" class="personal-lista">
       <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando registros...</div></div>
+    </div>
+  </div>
+  <!-- ── PANEL: DOBLES TURNOS ── -->
+  <div class="panel" id="panel-dobles">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--gris4)" id="doblesMesLabel">—</span>
+      <button class="btn" onclick="cargarDobles()" style="padding:8px 14px">↺ Actualizar</button>
+    </div>
+    <div id="doblesResumen" style="margin-bottom:16px"></div>
+    <div id="doblesLista" class="personal-lista">
+      <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando dobles turnos...</div></div>
     </div>
   </div>
 
@@ -1865,11 +1890,14 @@ function renderGrilla() {
       const fechaStr  = formatFecha(fecha);
       const esDomingo = fecha.getDay() === 0;
       const otroMes   = (fecha.getMonth() + 1 !== mesActual);
-      // turno del mes actual, o de meses vecinos si el día es de otro mes
-      let turno = turnosP.find(t => t.FECHA === fechaStr);
-      if (!turno && otroMes) {
-        turno = turnosBorde.find(t => t.FECHA === fechaStr && t.ID_PERSONAL == p.ID_PERSONAL);
+      // turnos de ese día (puede haber OFICIAL + OPERATIVO = doble turno)
+      let turnosDia = turnosP.filter(t => t.FECHA === fechaStr);
+      if (!turnosDia.length && otroMes) {
+        turnosDia = turnosBorde.filter(t => t.FECHA === fechaStr && t.ID_PERSONAL == p.ID_PERSONAL);
       }
+      // mostrar el OFICIAL si existe; si no, el primero
+      let turno = turnosDia.find(t => String(t.MODO||'OFICIAL').toUpperCase() !== 'OPERATIVO') || turnosDia[0] || null;
+      const tieneDoble = turnosDia.some(t => String(t.MODO||'').toUpperCase() === 'OPERATIVO');
 
       let innerClass = 'vacia';
       let letra = '', sec = '', horaTxt = '', tooltip = '';
@@ -1910,6 +1938,7 @@ function renderGrilla() {
 
       filasHtml += `<div class="celda${esDomingo?' domingo':''}${otroMes?' otro-mes':''}" ${onclick} title="${tooltip}">
         <div class="celda-inner ${innerClass}${anchoCelda>=100?' wide':''}">
+          ${tieneDoble ? '<span class="badge-dt" title="Doble turno (operativo)">DT</span>' : ''}
           <span class="turno-letra">${letra}</span>
           ${horaTxt ? `<span class="turno-hora">${horaTxt}</span>` : (sec?`<span class="turno-sec">${sec}</span>`:'')}
         </div>
@@ -2168,6 +2197,19 @@ function setModo(modo) {
   modoActual = modo;
   document.getElementById('btnOficial').classList.toggle('active',   modo === 'OFICIAL');
   document.getElementById('btnOperativo').classList.toggle('active', modo === 'OPERATIVO');
+  // Aviso de doble turno cuando es operativo
+  let aviso = document.getElementById('avisoOperativo');
+  if (!aviso) {
+    aviso = document.createElement('div');
+    aviso.id = 'avisoOperativo';
+    aviso.style.cssText = 'font-size:11px;margin-top:8px;line-height:1.4;color:var(--operativo,#f39c12)';
+    const cont = document.getElementById('btnOperativo')?.closest('.form-group');
+    if (cont) cont.appendChild(aviso);
+  }
+  if (aviso) {
+    aviso.style.display = (modo === 'OPERATIVO') ? 'block' : 'none';
+    aviso.textContent = '◎ Doble turno pagado aparte. Se registra con ID propio (DT) y se paga como hora extra (recargo 50%). Convive con el turno oficial del mismo día.';
+  }
 }
 
 function actualizarHoras() {
@@ -2226,31 +2268,38 @@ function leerTurnoDesdeModal() {
 function encolarTurnoActual() {
   const t = leerTurnoDesdeModal();
   if (!t) return false;
-  const clave = t.FECHA + '|' + t.ID_PERSONAL;
+  // Para OPERATIVO (doble turno) la clave incluye el modo, así convive con
+  // el turno OFICIAL del mismo día sin pisarlo. OFICIAL mantiene clave simple.
+  const esOperativo = String(t.MODO || 'OFICIAL').toUpperCase() === 'OPERATIVO';
+  const sufijo = esOperativo ? '|OPERATIVO' : '';
+  const clave = t.FECHA + '|' + t.ID_PERSONAL + sufijo;
 
   // Si eligió "Sin asignar (vacío)":
   if (!t.TURNO) {
-    // Quitar de la cola si estaba pendiente
     delete colaPendientes[clave];
-    const j = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
+    const j = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL && claveModo(x) === sufijo);
     if (j >= 0) {
-      // Si ya estaba guardado en la hoja, marcarlo para borrado en el servidor
       const existente = turnosMes[j];
       if (existente.ID_TURNO && !existente._pendiente) {
         colaPendientes[clave] = { ...existente, _borrar: true, _pendiente: true };
-        turnosMes.splice(j, 1);   // quitar de la grilla; se borra al "Guardar todo"
+        turnosMes.splice(j, 1);
       } else {
-        turnosMes.splice(j, 1);   // solo era pendiente: fuera
+        turnosMes.splice(j, 1);
       }
     }
     return true;
   }
 
-  // Turno real o LIBRE explícito: encolar normal
+  // Turno real o LIBRE explícito: encolar
   colaPendientes[clave] = t;
-  const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
+  const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL && claveModo(x) === sufijo);
   if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
   return true;
+}
+
+// Devuelve '|OPERATIVO' si el turno es operativo, '' si oficial
+function claveModo(t) {
+  return String(t.MODO || 'OFICIAL').toUpperCase() === 'OPERATIVO' ? '|OPERATIVO' : '';
 }
 
 // "Guardar y siguiente": encola este día y AVANZA al día siguiente,
@@ -2790,6 +2839,72 @@ async function marcarCartaEnviada(idRegistro) {
   } catch(e) { mostrarToast('Error de conexión', 'err'); }
 }
 
+// ══════════════════════════════════════
+// DOBLES TURNOS (MODO OPERATIVO) — horas extra + valor CLP
+// ══════════════════════════════════════
+function fmtCLP(n) {
+  return '$' + (parseInt(n)||0).toLocaleString('es-CL');
+}
+
+async function cargarDobles() {
+  const cont = document.getElementById('doblesLista');
+  cont.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando...</div></div>';
+  document.getElementById('doblesMesLabel').textContent = `${MESES_ES[mesActual-1]} ${anioActual}`;
+  try {
+    const res = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getDoblesTurnos&mes=${mesActual}&anio=${anioActual}`);
+    const data = await res.json();
+    if (!data.ok) { cont.innerHTML = '<div style="color:var(--ausente);padding:20px">Error</div>'; return; }
+
+    // Resumen arriba
+    const resu = document.getElementById('doblesResumen');
+    resu.innerHTML = `
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div style="background:rgba(243,156,18,.1);border:1px solid rgba(243,156,18,.3);border-radius:10px;padding:12px 18px">
+          <div style="font-size:11px;color:var(--gris4)">TOTAL HORAS EXTRA</div>
+          <div style="font-size:22px;font-weight:700;color:var(--operativo)">${(data.total_horas||0).toFixed(1)}h</div>
+        </div>
+        <div style="background:rgba(46,204,113,.1);border:1px solid rgba(46,204,113,.3);border-radius:10px;padding:12px 18px">
+          <div style="font-size:11px;color:var(--gris4)">COSTO TOTAL (CLP)</div>
+          <div style="font-size:22px;font-weight:700;color:var(--oficial)">${fmtCLP(data.total_clp)}</div>
+        </div>
+      </div>`;
+
+    if (!data.detalle.length) {
+      cont.innerHTML = '<div style="text-align:center;color:var(--gris4);padding:30px">Sin dobles turnos este mes</div>';
+      return;
+    }
+
+    // Por persona (resumen) + detalle
+    let html = '';
+    if (data.resumen && data.resumen.length) {
+      html += '<div style="font-size:12px;color:var(--gris4);margin:6px 0">Por persona:</div>';
+      html += data.resumen.map(r =>
+        `<div class="personal-card">
+          <div class="personal-info" style="flex:1">
+            <div class="personal-nombre">${r.nombre}</div>
+            <div class="personal-meta">${r.turnos} doble${r.turnos>1?'s':''} · ${r.horas.toFixed(1)}h · valor hora ${fmtCLP(r.valor_hora)}</div>
+          </div>
+          <div style="font-weight:700;color:var(--oficial);font-size:15px">${fmtCLP(r.valor)}</div>
+        </div>`).join('');
+    }
+    html += '<div style="font-size:12px;color:var(--gris4);margin:14px 0 6px">Detalle:</div>';
+    html += data.detalle.map(d =>
+      `<div class="personal-card" style="border-left:3px solid var(--operativo)">
+        <div class="personal-info" style="flex:1">
+          <div class="personal-nombre">${d.nombre} <span style="font-size:11px;color:var(--gris4)">· ${d.fecha}</span></div>
+          <div class="personal-meta">${d.id_dt||''} · ${d.entrada}-${d.salida} · ${d.horas.toFixed(1)}h</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;color:var(--oficial)">${fmtCLP(d.valor)}</div>
+          <div style="font-size:10px;color:var(--gris4)">${fmtCLP(d.valor_hora)}/h</div>
+        </div>
+      </div>`).join('');
+    cont.innerHTML = html;
+  } catch(e) {
+    cont.innerHTML = '<div style="color:var(--ausente);padding:20px">Error de conexión</div>';
+  }
+}
+
 function abrirModalEstado(id_turno, nombre, estadoActual) {
   if (userRol === 'READONLY') return;
   const nuevo = prompt(`Estado de ${nombre}:\n1=NORMAL  2=TARDE  3=AUSENTE  4=PERMISO\nActual: ${estadoActual}\n\nIngresa número:`);
@@ -3016,6 +3131,7 @@ function cambiarTab(tab) {
   if (tab === 'semana')    cargarSemana();
   if (tab === 'personal')  cargarPersonal();
   if (tab === 'registros') cargarRegistros();
+  if (tab === 'dobles')    cargarDobles();
 }
 
 function cambiarMes(dir) {
