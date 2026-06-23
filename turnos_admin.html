@@ -1174,9 +1174,14 @@
       <input type="text" class="form-input" id="pNombre" placeholder="Ej: Alejandro Velez">
     </div>
     <div class="form-group">
-      <label class="form-label">RUT <span style="color:var(--rojo)">*</span></label>
+      <label class="form-label">RUT <span style="color:var(--rojo)" id="rutAsterisco">*</span></label>
       <input type="text" class="form-input" id="pRut" placeholder="12.345.678-9" oninput="onRutInput()">
       <div id="rutHint" style="font-size:11px;margin-top:6px;color:var(--gris4)"></div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer;color:var(--gris4)">
+        <input type="checkbox" id="pSinRut" onchange="onSinRutToggle()" style="width:16px;height:16px;cursor:pointer">
+        Persona sin RUT — asignar provisorio interno
+      </label>
+      <div id="provisorioHint" style="font-size:11px;margin-top:4px;color:var(--operativo)"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Alias operativo (opcional)</label>
@@ -1304,6 +1309,11 @@ function limpiarRut(rut) {
   return String(rut || '').replace(/[^0-9kK]/g, '').toUpperCase();
 }
 
+// ¿El valor es un identificador provisorio interno (PROV-...) y no un RUT real?
+function esRutProvisorio(rut) {
+  return /^PROV-/i.test(String(rut || '').trim());
+}
+
 // Calcula el dígito verificador (módulo 11) del cuerpo numérico
 function dvRut(cuerpo) {
   let suma = 0, mul = 2;
@@ -1355,6 +1365,29 @@ function onRutInput() {
   } else {
     hint.textContent = '✗ RUT inválido (revisá el dígito verificador)';
     hint.style.color = 'var(--ausente, #e74c3c)';
+  }
+}
+
+// Toggle "sin RUT (provisorio)": deshabilita el campo y avisa que se asignará un ID interno
+function onSinRutToggle() {
+  const sinRut = document.getElementById('pSinRut').checked;
+  const inp  = document.getElementById('pRut');
+  const hint = document.getElementById('rutHint');
+  const prov = document.getElementById('provisorioHint');
+  const aster = document.getElementById('rutAsterisco');
+
+  if (sinRut) {
+    inp.value = '';
+    inp.disabled = true;
+    inp.style.opacity = '0.5';
+    hint.textContent = '';
+    if (aster) aster.style.display = 'none';
+    prov.textContent = '↳ Se asignará un identificador provisorio interno (ej. PROV-RIESCO-0001). Queda marcada como SIN RUT para seguimiento.';
+  } else {
+    inp.disabled = false;
+    inp.style.opacity = '1';
+    if (aster) aster.style.display = 'inline';
+    prov.textContent = '';
   }
 }
 
@@ -2522,8 +2555,12 @@ function abrirModalPersonal(id) {
 
   document.getElementById('modalPersonalTitulo').textContent = p ? p.NOMBRE : 'Nueva persona';
   document.getElementById('pNombre').value    = p?.NOMBRE    || '';
-  document.getElementById('pRut').value       = p?.RUT ? formatearRut(p.RUT) : '';
+  document.getElementById('pRut').value       = p?.RUT ? (esRutProvisorio(p.RUT) ? '' : formatearRut(p.RUT)) : '';
   document.getElementById('rutHint').textContent = '';
+  // ¿es provisorio? (flag en hoja o ID que empieza por PROV-)
+  const esProv = p ? (p.RUT_PROVISORIO === true || p.RUT_PROVISORIO === 'TRUE' || esRutProvisorio(p.RUT)) : false;
+  document.getElementById('pSinRut').checked = esProv;
+  onSinRutToggle();
   document.getElementById('pAlias').value     = p?.ALIAS     || '';
   document.getElementById('pRol').value       = p?.ROL       || 'MOZO';
   document.getElementById('pContrato').value  = p?.TIPO_CONTRATO || 'FULL';
@@ -2625,11 +2662,15 @@ async function guardarPersonal() {
   const nombre = document.getElementById('pNombre').value.trim();
   if (!nombre) { mostrarToast('Ingresa un nombre', 'err'); return; }
 
-  // RUT obligatorio y válido
+  // RUT: obligatorio y válido, SALVO que sea "sin RUT" (provisorio)
+  const sinRut = document.getElementById('pSinRut').checked;
   const rutVal = document.getElementById('pRut').value.trim();
-  if (!rutVal) { mostrarToast('El RUT es obligatorio', 'err'); return; }
-  if (!validarRut(rutVal)) { mostrarToast('RUT inválido — revisá el dígito verificador', 'err'); return; }
-  const rutLimpio = formatearRut(rutVal);   // guardamos formateado 12.345.678-9
+  let rutLimpio = '';
+  if (!sinRut) {
+    if (!rutVal) { mostrarToast('El RUT es obligatorio (o marcá "sin RUT")', 'err'); return; }
+    if (!validarRut(rutVal)) { mostrarToast('RUT inválido — revisá el dígito verificador', 'err'); return; }
+    rutLimpio = formatearRut(rutVal);
+  }
 
   const activo = estadoPersonalActivo;
 
@@ -2651,6 +2692,7 @@ async function guardarPersonal() {
     id_personal:     personalEditando,
     nombre,
     rut:             rutLimpio,
+    sin_rut:         sinRut,
     alias:           document.getElementById('pAlias').value.trim(),
     rol:             document.getElementById('pRol').value,
     tipo_contrato:   document.getElementById('pContrato').value,
