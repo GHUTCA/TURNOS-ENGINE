@@ -1174,6 +1174,11 @@
       <input type="text" class="form-input" id="pNombre" placeholder="Ej: Alejandro Velez">
     </div>
     <div class="form-group">
+      <label class="form-label">RUT <span style="color:var(--rojo)">*</span></label>
+      <input type="text" class="form-input" id="pRut" placeholder="12.345.678-9" oninput="onRutInput()">
+      <div id="rutHint" style="font-size:11px;margin-top:6px;color:var(--gris4)"></div>
+    </div>
+    <div class="form-group">
       <label class="form-label">Alias operativo (opcional)</label>
       <input type="text" class="form-input" id="pAlias" placeholder="Ej: Alex, REFUERZO-1">
     </div>
@@ -1211,6 +1216,45 @@
     <div class="form-group">
       <label class="form-label">Teléfono (WhatsApp)</label>
       <input type="tel" class="form-input" id="pTelefono" placeholder="+56 9 XXXX XXXX">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Estado laboral</label>
+      <div class="modo-toggle">
+        <button type="button" class="modo-btn oficial active" id="btnActivo" onclick="setEstadoPersonal(true)">
+          ✓ Activo
+        </button>
+        <button type="button" class="modo-btn operativo" id="btnInactivo" onclick="setEstadoPersonal(false)">
+          ⊘ Inactivo (baja)
+        </button>
+      </div>
+    </div>
+
+    <!-- Campos de baja: solo visibles si Inactivo -->
+    <div id="bloqueBaja" style="display:none;">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Motivo de baja</label>
+          <select class="form-select" id="pMotivoBaja" onchange="onMotivoBajaChange()"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Submotivo</label>
+          <select class="form-select" id="pSubmotivoBaja" onchange="actualizarReingresoHint()"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha de baja</label>
+        <input type="date" class="form-input" id="pFechaBaja">
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Puede reingresar a futuro?</label>
+        <select class="form-select" id="pReingreso">
+          <option value="AUTO">Automático (según submotivo)</option>
+          <option value="SI">Sí, puede reingresar</option>
+          <option value="NO">No, nunca reingresar</option>
+        </select>
+        <div id="reingresoHint" style="font-size:11px;margin-top:6px;color:var(--gris4)"></div>
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -1251,6 +1295,68 @@ let semanaVista = null;   // null = mes completo; si no, lunes de la semana most
 let modalData   = { id_personal: null, fecha: null, turnoExistente: null };
 let modoActual  = 'OFICIAL';
 let personalEditando = null;
+let estadoPersonalActivo = true;   // estado del toggle Activo/Inactivo en el modal personal
+
+// ══════════════════════════════════════
+// RUT chileno — limpiar, formatear, validar dígito verificador
+// ══════════════════════════════════════
+function limpiarRut(rut) {
+  return String(rut || '').replace(/[^0-9kK]/g, '').toUpperCase();
+}
+
+// Calcula el dígito verificador (módulo 11) del cuerpo numérico
+function dvRut(cuerpo) {
+  let suma = 0, mul = 2;
+  for (let i = cuerpo.length - 1; i >= 0; i--) {
+    suma += parseInt(cuerpo[i], 10) * mul;
+    mul = mul === 7 ? 2 : mul + 1;
+  }
+  const res = 11 - (suma % 11);
+  if (res === 11) return '0';
+  if (res === 10) return 'K';
+  return String(res);
+}
+
+// Valida RUT completo (cuerpo + DV). Devuelve true/false.
+function validarRut(rut) {
+  const limpio = limpiarRut(rut);
+  if (limpio.length < 2) return false;
+  const cuerpo = limpio.slice(0, -1);
+  const dv     = limpio.slice(-1);
+  if (!/^\d+$/.test(cuerpo)) return false;
+  return dvRut(cuerpo) === dv;
+}
+
+// Formatea 123456789 -> 12.345.678-9
+function formatearRut(rut) {
+  const limpio = limpiarRut(rut);
+  if (limpio.length < 2) return limpio;
+  let cuerpo = limpio.slice(0, -1);
+  const dv   = limpio.slice(-1);
+  cuerpo = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return cuerpo + '-' + dv;
+}
+
+// Mientras escribe: formatear y mostrar si es válido
+function onRutInput() {
+  const inp = document.getElementById('pRut');
+  const hint = document.getElementById('rutHint');
+  const val = inp.value;
+  const limpio = limpiarRut(val);
+  // reformatear suavemente
+  inp.value = formatearRut(val);
+  if (!limpio || limpio.length < 2) {
+    hint.textContent = '';
+    return;
+  }
+  if (validarRut(val)) {
+    hint.textContent = '✓ RUT válido';
+    hint.style.color = 'var(--operativo, #2ecc71)';
+  } else {
+    hint.textContent = '✗ RUT inválido (revisá el dígito verificador)';
+    hint.style.color = 'var(--ausente, #e74c3c)';
+  }
+}
 
 // ── COLA DE TURNOS PENDIENTES (guardado rápido por lotes) ──
 // Mapa clave "fecha|id_personal" -> objeto turno pendiente.
@@ -2416,6 +2522,8 @@ function abrirModalPersonal(id) {
 
   document.getElementById('modalPersonalTitulo').textContent = p ? p.NOMBRE : 'Nueva persona';
   document.getElementById('pNombre').value    = p?.NOMBRE    || '';
+  document.getElementById('pRut').value       = p?.RUT ? formatearRut(p.RUT) : '';
+  document.getElementById('rutHint').textContent = '';
   document.getElementById('pAlias').value     = p?.ALIAS     || '';
   document.getElementById('pRol').value       = p?.ROL       || 'MOZO';
   document.getElementById('pContrato').value  = p?.TIPO_CONTRATO || 'FULL';
@@ -2424,11 +2532,85 @@ function abrirModalPersonal(id) {
 
   poblarSecciones('pSeccion');
   document.getElementById('pSeccion').value = p?.SECCION_DEFAULT || '';
+
+  // Estado laboral + campos de baja
+  poblarMotivosBaja();
+  const esActivo = !p ? true : (p.ACTIVO === true || p.ACTIVO === 'TRUE' || p.ACTIVO === 'SI' || p._activo === true);
+  setEstadoPersonal(esActivo);
+  document.getElementById('pMotivoBaja').value    = p?.MOTIVO_BAJA    || '';
+  onMotivoBajaChange();
+  document.getElementById('pSubmotivoBaja').value = (p?.SUBMOTIVO_BAJA || '');
+  document.getElementById('pFechaBaja').value     = p?.FECHA_BAJA     || '';
+  // Reingreso: si hay valor explícito en hoja, reflejarlo; si no, AUTO
+  const rg = p?.REINGRESO_OK;
+  document.getElementById('pReingreso').value =
+    (rg === true || rg === 'TRUE') ? 'SI' : (rg === false || rg === 'FALSE') ? 'NO' : 'AUTO';
+  actualizarReingresoHint();
+
   document.getElementById('modalPersonal').classList.add('open');
 
   // Ocultar barra de cola mientras se edita personal (no estorba el botón Guardar)
   const barra = document.getElementById('barraCola');
   if (barra) barra.style.display = 'none';
+}
+
+// ── Estado laboral (toggle Activo/Inactivo) ──
+function setEstadoPersonal(activo) {
+  estadoPersonalActivo = activo;
+  document.getElementById('btnActivo').classList.toggle('active', activo);
+  document.getElementById('btnInactivo').classList.toggle('active', !activo);
+  document.getElementById('bloqueBaja').style.display = activo ? 'none' : 'block';
+  if (!activo && !document.getElementById('pFechaBaja').value) {
+    // por defecto, fecha de baja = hoy
+    document.getElementById('pFechaBaja').value = new Date().toISOString().slice(0,10);
+  }
+  actualizarReingresoHint();
+}
+
+// Lista de motivos y submotivos desde PARAMETROS
+function poblarMotivosBaja() {
+  const motivos = String(parametros.MOTIVOS_BAJA || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const selM = document.getElementById('pMotivoBaja');
+  selM.innerHTML = '<option value="">— Seleccionar —</option>' +
+    motivos.map(m => `<option value="${m}">${etiquetaLegible(m)}</option>`).join('');
+}
+
+// Submotivos según el motivo elegido (SUBMOTIVOS_<MOTIVO> en PARAMETROS)
+function onMotivoBajaChange() {
+  const motivo = document.getElementById('pMotivoBaja').value;
+  const clave = 'SUBMOTIVOS_' + motivo.toUpperCase();
+  const subs = String(parametros[clave] || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const selS = document.getElementById('pSubmotivoBaja');
+  selS.innerHTML = '<option value="">— Seleccionar —</option>' +
+    subs.map(s => `<option value="${s}">${etiquetaLegible(s)}</option>`).join('');
+  actualizarReingresoHint();
+}
+
+// Convierte ROBO -> "Robo", BAJO_RENDIMIENTO -> "Bajo rendimiento"
+function etiquetaLegible(cod) {
+  return String(cod).toLowerCase().replace(/_/g,' ').replace(/^\w/, c => c.toUpperCase());
+}
+
+// Aviso visual de si el submotivo bloquea el reingreso
+function actualizarReingresoHint() {
+  const hint = document.getElementById('reingresoHint');
+  if (!hint) return;
+  const sub = (document.getElementById('pSubmotivoBaja')?.value || '').toUpperCase();
+  const graves = String(parametros.SUBMOTIVOS_GRAVES || '').toUpperCase().split(',').map(s=>s.trim()).filter(Boolean);
+  const esGrave = sub && graves.indexOf(sub) !== -1;
+  const modo = document.getElementById('pReingreso')?.value || 'AUTO';
+  if (modo === 'AUTO') {
+    hint.textContent = esGrave
+      ? '⚠️ Automático: este submotivo es GRAVE → NO podrá reingresar.'
+      : 'Automático: podrá reingresar a futuro.';
+    hint.style.color = esGrave ? 'var(--ausente, #e74c3c)' : 'var(--gris4)';
+  } else if (modo === 'NO') {
+    hint.textContent = '🔒 Bloqueado manualmente: nunca reingresar.';
+    hint.style.color = 'var(--ausente, #e74c3c)';
+  } else {
+    hint.textContent = 'Permitido manualmente: puede reingresar.';
+    hint.style.color = 'var(--gris4)';
+  }
 }
 
 function cerrarModalPersonal(e) {
@@ -2443,26 +2625,61 @@ async function guardarPersonal() {
   const nombre = document.getElementById('pNombre').value.trim();
   if (!nombre) { mostrarToast('Ingresa un nombre', 'err'); return; }
 
+  // RUT obligatorio y válido
+  const rutVal = document.getElementById('pRut').value.trim();
+  if (!rutVal) { mostrarToast('El RUT es obligatorio', 'err'); return; }
+  if (!validarRut(rutVal)) { mostrarToast('RUT inválido — revisá el dígito verificador', 'err'); return; }
+  const rutLimpio = formatearRut(rutVal);   // guardamos formateado 12.345.678-9
+
+  const activo = estadoPersonalActivo;
+
+  // Validar baja: si es inactivo, exigir motivo
+  if (!activo && !document.getElementById('pMotivoBaja').value) {
+    mostrarToast('Indica el motivo de baja', 'err'); return;
+  }
+
+  // Reingreso: AUTO -> no se manda (lo decide el GAS); SI/NO -> override explícito
+  const reingresoSel = document.getElementById('pReingreso').value;
+  let reingresoOk;
+  if (reingresoSel === 'SI') reingresoOk = true;
+  else if (reingresoSel === 'NO') reingresoOk = false;
+  // si AUTO, dejamos reingresoOk undefined
+
   const payload = {
     local:           LOCAL,
     accion:          'guardarPersonal',
     id_personal:     personalEditando,
     nombre,
+    rut:             rutLimpio,
     alias:           document.getElementById('pAlias').value.trim(),
     rol:             document.getElementById('pRol').value,
     tipo_contrato:   document.getElementById('pContrato').value,
     horas_semanales: parseInt(document.getElementById('pHoras').value),
     seccion_default: document.getElementById('pSeccion').value,
     local_val:       LOCAL.toUpperCase(),
-    activo:          true,
+    activo:          activo,
     telefono:        document.getElementById('pTelefono').value.trim()
   };
+
+  // Campos de baja solo si es inactivo
+  if (!activo) {
+    payload.motivo_baja    = document.getElementById('pMotivoBaja').value;
+    payload.submotivo_baja = document.getElementById('pSubmotivoBaja').value;
+    payload.fecha_baja     = document.getElementById('pFechaBaja').value;
+    if (reingresoOk !== undefined) payload.reingreso_ok = reingresoOk;
+  }
 
   try {
     const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (data.ok) {
-      mostrarToast(data.accion === 'creado' ? 'Persona agregada ✓' : 'Actualizado ✓', 'ok');
+      let msg = data.accion === 'creado' ? 'Persona agregada ✓' : 'Actualizado ✓';
+      if (!activo) {
+        msg = (data.reingreso_ok === false)
+          ? 'Baja registrada 🔒 NO reingresa'
+          : 'Baja registrada ✓ (puede reingresar)';
+      }
+      mostrarToast(msg, 'ok');
       cerrarModalPersonalBtn();
       cargarPersonal();
     } else {
