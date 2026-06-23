@@ -384,7 +384,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.75);
-    z-index: 200;
+    z-index: 1000;
     align-items: flex-end;
     justify-content: center;
   }
@@ -575,7 +575,7 @@
   .barra-cola {
     position: fixed;
     left: 0; right: 0; bottom: 0;
-    background: #1a1a1a;
+    background: linear-gradient(90deg, #1e3a8a, #2563eb);
     color: #fff;
     padding: 12px 18px;
     display: none;
@@ -583,9 +583,9 @@
     justify-content: space-between;
     gap: 14px;
     z-index: 900;
-    box-shadow: 0 -3px 12px rgba(0,0,0,.3);
+    box-shadow: 0 -3px 14px rgba(37,99,235,.4);
   }
-  .barra-cola-txt { font-size: 14px; font-weight: 600; }
+  .barra-cola-txt { font-size: 14px; font-weight: 700; letter-spacing: .3px; }
   .barra-cola-btns { display: flex; gap: 10px; }
   .barra-cola .btn { padding: 8px 16px; }
   .btn-eliminar {
@@ -1123,15 +1123,9 @@
       </select>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Estado</label>
-      <select class="form-select" id="selEstado">
-        <option value="NORMAL">Normal</option>
-        <option value="TARDE">Llegada tarde</option>
-        <option value="AUSENTE">Ausente</option>
-        <option value="PERMISO">Permiso</option>
-      </select>
-    </div>
+    <!-- ESTADO removido del modal de planificación (es consuntivo: tarde/ausente/permiso
+         se marca en HOY/SEMANA, no al planificar). Hidden con NORMAL para compatibilidad. -->
+    <input type="hidden" id="selEstado" value="NORMAL">
 
     <div class="form-group">
       <label class="form-label">Modo</label>
@@ -1369,7 +1363,9 @@ function construirTurnos() {
 function poblarSelectTurnos() {
   const sel = document.getElementById('selTurno');
   if (!sel) return;
-  sel.innerHTML = '<option value="">— Sin turno (día libre) —</option>' +
+  sel.innerHTML =
+    '<option value="">— Sin asignar (vacío) —</option>' +
+    '<option value="LIBRE">🛌 Día libre (descanso)</option>' +
     turnosDef.map(t => `<option value="${t.codigo}">${t.label} · ${t.entrada}-${t.salida}</option>`).join('');
 }
 
@@ -1380,6 +1376,7 @@ function poblarSelectTurnos() {
 function normalizarCodTurno(cod) {
   if (!cod) return '';
   const c = String(cod).toUpperCase();
+  if (c === 'LIBRE') return 'LIBRE';   // día libre explícito
   // si ya existe tal cual en los turnos definidos, úsalo
   if (turnosDef.some(t => t.codigo === c)) return c;
   // retrocompat: M→apertura/mañana, T→tarde/cierre, C→completo (ya no es turno)
@@ -1448,6 +1445,7 @@ async function cargarTurnosMes() {
 
     // Reinyectar turnos pendientes (cola) que aún no se han enviado
     Object.values(colaPendientes).forEach(t => {
+      if (t._borrar) return;   // los marcados para borrar no se pintan
       const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
       if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
     });
@@ -1648,8 +1646,11 @@ function renderGrilla() {
       if (turno) {
         const modo   = (turno.MODO||'OFICIAL').toLowerCase();
         const estado = (turno.ESTADO||'NORMAL').toLowerCase();
-        const esLibre = !turno.TURNO || turno.TURNO === '';
+        const codTurno = String(turno.TURNO || '').toUpperCase();
+        const esLibre = codTurno === 'LIBRE';
+        const esVacio = !turno.TURNO || turno.TURNO === '';
         if (esLibre)                    { innerClass = 'libre'; letra = 'LIBRE'; }
+        else if (esVacio)               { innerClass = 'libre'; letra = 'LIBRE'; }  // retrocompat filas viejas
         else if (estado === 'ausente')  innerClass = 'ausente';
         else if (estado === 'tarde')    innerClass = 'tarde';
         else if (estado === 'permiso')  innerClass = 'permiso';
@@ -1658,7 +1659,9 @@ function renderGrilla() {
 
         if (turno._pendiente) innerClass += ' pendiente';
 
-        if (!esLibre) {
+        const noEsTurnoReal = esLibre || esVacio;
+
+        if (!noEsTurnoReal) {
           letra = abreviarTurno(turno.TURNO);
           sec   = turno.SECCION ? turno.SECCION.charAt(0) : '';
           const hE = horaCorta(turno.HORA_ENTRADA);
@@ -1935,11 +1938,11 @@ function leerTurnoDesdeModal() {
 
   const turnoVal  = document.getElementById('selTurno').value;
   const nombreVal = modoActual === 'OPERATIVO' && p.ALIAS ? p.ALIAS : p.NOMBRE;
-  const esLibre   = !turnoVal;
+  const sinHoras  = !turnoVal || turnoVal.toUpperCase() === 'LIBRE';
 
   let hEntrada = document.getElementById('inputEntrada').value;
   let hSalida  = document.getElementById('inputSalida').value;
-  if (esLibre) { hEntrada = ''; hSalida = ''; }
+  if (sinHoras) { hEntrada = ''; hSalida = ''; }
   else if (!hEntrada || !hSalida) {
     const def = turnosDef.find(t => t.codigo === turnoVal);
     if (def) { hEntrada = hEntrada || def.entrada; hSalida = hSalida || def.salida; }
@@ -1965,13 +1968,32 @@ function leerTurnoDesdeModal() {
 }
 
 // Mete el turno en la cola, lo pinta YA en la grilla y devuelve true.
+// "Sin asignar" (TURNO vacío) = quitar lo que hubiera (no se encola fila vacía).
 function encolarTurnoActual() {
   const t = leerTurnoDesdeModal();
   if (!t) return false;
   const clave = t.FECHA + '|' + t.ID_PERSONAL;
-  colaPendientes[clave] = t;
 
-  // Inyectar/actualizar en turnosMes para que renderGrilla lo dibuje al instante
+  // Si eligió "Sin asignar (vacío)":
+  if (!t.TURNO) {
+    // Quitar de la cola si estaba pendiente
+    delete colaPendientes[clave];
+    const j = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
+    if (j >= 0) {
+      // Si ya estaba guardado en la hoja, marcarlo para borrado en el servidor
+      const existente = turnosMes[j];
+      if (existente.ID_TURNO && !existente._pendiente) {
+        colaPendientes[clave] = { ...existente, _borrar: true, _pendiente: true };
+        turnosMes.splice(j, 1);   // quitar de la grilla; se borra al "Guardar todo"
+      } else {
+        turnosMes.splice(j, 1);   // solo era pendiente: fuera
+      }
+    }
+    return true;
+  }
+
+  // Turno real o LIBRE explícito: encolar normal
+  colaPendientes[clave] = t;
   const i = turnosMes.findIndex(x => x.FECHA === t.FECHA && x.ID_PERSONAL == t.ID_PERSONAL);
   if (i >= 0) turnosMes[i] = t; else turnosMes.push(t);
   return true;
@@ -2010,23 +2032,44 @@ function guardarYSiguiente() {
   abrirModalTurno(id, p ? p.NOMBRE : '', fechaSigStr);
 }
 
-// Cambiar de empleado SIN cerrar el modal (mismo día).
+// Cambiar de empleado SIN cerrar el modal.
+// Lleva al PRIMER día de la semana visible (o del mes) y SIN turno precargado,
+// para empezar el recorrido de esa persona desde cero.
 function cambiarEmpleadoModal() {
   ultimoTurnoUsado = null;   // al cambiar de persona, no arrastrar precarga
   const nuevoId = document.getElementById('selEmpleadoModal').value;
   const p = personal.find(p => p.ID_PERSONAL == nuevoId);
-  abrirModalTurno(nuevoId, p ? p.NOMBRE : '', modalData.fecha);
+
+  // Determinar el primer día a mostrar
+  let fechaInicio;
+  if (semanaVista) {
+    // primer día de esa semana que cae en el mes visible
+    const lunes = new Date(semanaVista);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(lunes); d.setDate(lunes.getDate() + i);
+      if (d.getMonth() + 1 === mesActual && d.getFullYear() === anioActual) {
+        fechaInicio = formatFecha(d); break;
+      }
+    }
+  }
+  if (!fechaInicio) fechaInicio = formatFecha(new Date(anioActual, mesActual - 1, 1));
+
+  abrirModalTurno(nuevoId, p ? p.NOMBRE : '', fechaInicio);
 }
 
 // Envía TODA la cola en una sola llamada (guardarMultiplesTurnos).
+// Los marcados _borrar se eliminan; el resto se guarda.
 async function guardarTodo() {
-  const turnos = Object.values(colaPendientes);
-  if (!turnos.length) { mostrarToast('No hay turnos pendientes', 'warn'); return; }
+  const items = Object.values(colaPendientes);
+  if (!items.length) { mostrarToast('No hay turnos pendientes', 'warn'); return; }
+
+  const aGuardar = items.filter(t => !t._borrar);
+  const aBorrar  = items.filter(t => t._borrar && t.ID_TURNO);
 
   const payload = {
     accion: 'guardarMultiplesTurnos',
     local:  LOCAL,
-    turnos: turnos.map(t => ({
+    turnos: aGuardar.map(t => ({
       id_personal:  t.ID_PERSONAL,
       nombre:       t.NOMBRE,
       fecha:        t.FECHA,
@@ -2041,17 +2084,26 @@ async function guardarTodo() {
   };
 
   try {
-    mostrarToast(`Guardando ${turnos.length} turnos…`, 'warn');
-    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (data.ok) {
-      colaPendientes = {};
-      mostrarToast(`${data.total} turnos guardados ✓ (${data.creados} nuevos, ${data.actualizados} act.)`, 'ok');
-      actualizarBarraCola();
-      cargarTurnosMes();
-    } else {
-      mostrarToast(data.error || 'Error al guardar', 'err');
+    mostrarToast(`Guardando ${items.length} cambios…`, 'warn');
+
+    // 1) Guardar/actualizar (si hay)
+    if (payload.turnos.length) {
+      const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!data.ok) { mostrarToast(data.error || 'Error al guardar', 'err'); return; }
     }
+
+    // 2) Borrar los marcados (uno a uno; suelen ser pocos)
+    for (const t of aBorrar) {
+      await fetch(GAS_URL, { method:'POST', body: JSON.stringify({
+        local: LOCAL, accion: 'eliminarTurno', id_turno: t.ID_TURNO
+      })});
+    }
+
+    colaPendientes = {};
+    mostrarToast(`${items.length} cambios guardados ✓`, 'ok');
+    actualizarBarraCola();
+    cargarTurnosMes();
   } catch(e) {
     mostrarToast('Error de conexión', 'err');
   }
