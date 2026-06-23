@@ -1151,6 +1151,9 @@
       <button class="btn btn-eliminar" id="btnEliminar" onclick="eliminarTurno()" style="display:none;">
         Quitar turno
       </button>
+      <button class="btn btn-eliminar" id="btnEliminarMulti" onclick="eliminarTurnosSeleccionados()" style="display:none;">
+        🗑️ Eliminar seleccionados (<span id="cntEliminarMulti">0</span>)
+      </button>
     </div>
   </div>
 </div>
@@ -1195,7 +1198,7 @@
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Horas/semana</label>
-        <input type="number" class="form-input" id="pHoras" value="45" min="1" max="45">
+        <input type="number" class="form-input" id="pHoras" min="1" max="48" placeholder="—">
       </div>
       <div class="form-group">
         <label class="form-label">Sección default</label>
@@ -1804,7 +1807,7 @@ function renderPersonal() {
       <div class="personal-avatar">${iniciales}</div>
       <div class="personal-info">
         <div class="personal-nombre">${p.NOMBRE}</div>
-        <div class="personal-meta">${p.ROL||'—'} · ${p.TIPO_CONTRATO||'—'} · ${p.HORAS_SEMANALES||45}h/sem</div>
+        <div class="personal-meta">${p.ROL||'—'} · ${p.TIPO_CONTRATO||'—'} · ${p.HORAS_SEMANALES||'—'}h/sem</div>
         ${p.ALIAS ? `<div class="personal-meta" style="color:var(--operativo)">alias: ${p.ALIAS}</div>` : ''}
       </div>
       <div class="personal-acciones">
@@ -1900,6 +1903,25 @@ function actualizarHintMulti() {
   const hint = document.getElementById('diasMultiHint');
   if (n <= 1) hint.textContent = 'Tocá los días para asignar el mismo turno en bloque.';
   else hint.textContent = `Se asignará el turno a ${n} días.`;
+
+  // Botón "Eliminar seleccionados": cuenta cuántos de los días marcados
+  // tienen realmente un turno (en hoja o en cola) para esta persona.
+  const id = modalData.id_personal;
+  const conTurno = Array.from(diasMultiSel).filter(f => {
+    if (colaPendientes[f + '|' + id] && !colaPendientes[f + '|' + id]._borrar) return true;
+    return turnosMes.some(t => t.FECHA === f && t.ID_PERSONAL == id);
+  });
+  const btnMulti = document.getElementById('btnEliminarMulti');
+  const cnt = document.getElementById('cntEliminarMulti');
+  if (btnMulti && cnt) {
+    // Mostrar solo si hay 2+ días marcados y al menos 1 con turno
+    if (diasMultiSel.size >= 2 && conTurno.length >= 1) {
+      btnMulti.style.display = 'block';
+      cnt.textContent = conTurno.length;
+    } else {
+      btnMulti.style.display = 'none';
+    }
+  }
 }
 
 function cerrarModal(e) {
@@ -2301,7 +2323,57 @@ async function eliminarTurno() {
   }
 }
 
-// Modal estado rápido (vista CAP)
+// ── Eliminar VARIOS turnos seleccionados (chips de días) en bloque ──
+async function eliminarTurnosSeleccionados() {
+  const id = modalData.id_personal;
+
+  // Resolver, por cada día marcado, qué turno tiene (cola o hoja)
+  const aBorrarServidor = [];   // ID_TURNO guardados en la hoja
+  const aQuitarCola     = [];   // claves solo pendientes
+
+  Array.from(diasMultiSel).forEach(f => {
+    const clave = f + '|' + id;
+    const pend  = colaPendientes[clave];
+    if (pend && !pend._borrar) {
+      if (pend.ID_TURNO && !pend._pendiente) aBorrarServidor.push(pend.ID_TURNO);
+      else aQuitarCola.push(clave);
+    } else {
+      const t = turnosMes.find(x => x.FECHA === f && x.ID_PERSONAL == id);
+      if (t && t.ID_TURNO && !t._pendiente) aBorrarServidor.push(t.ID_TURNO);
+    }
+  });
+
+  const total = aBorrarServidor.length + aQuitarCola.length;
+  if (total === 0) { mostrarToast('No hay turnos que eliminar en la selección', 'warn'); return; }
+  const pNombre = (personal.find(p => p.ID_PERSONAL == id) || {}).NOMBRE || 'esta persona';
+  if (!confirm(`¿Eliminar ${total} turno${total>1?'s':''} de ${pNombre}? No se puede deshacer.`)) return;
+
+  // 1) Quitar los que solo estaban en cola (instantáneo, sin servidor)
+  aQuitarCola.forEach(clave => {
+    delete colaPendientes[clave];
+    const [f, pid] = clave.split('|');
+    const i = turnosMes.findIndex(x => x.FECHA === f && x.ID_PERSONAL == pid && x._pendiente);
+    if (i >= 0) turnosMes.splice(i, 1);
+  });
+
+  // 2) Borrar en el servidor los guardados
+  try {
+    if (aBorrarServidor.length) {
+      mostrarToast(`Eliminando ${aBorrarServidor.length} turnos…`, 'warn');
+      for (const idTurno of aBorrarServidor) {
+        await fetch(GAS_URL, { method:'POST', body: JSON.stringify({
+          local: LOCAL, accion: 'eliminarTurno', id_turno: idTurno
+        })});
+      }
+    }
+    cerrarModalBtn();
+    mostrarToast(`${total} turnos eliminados ✓`, 'ok');
+    actualizarBarraCola();
+    cargarTurnosMes();
+  } catch(e) {
+    mostrarToast('Error de conexión al eliminar', 'err');
+  }
+}
 function abrirModalEstado(id_turno, nombre, estadoActual) {
   if (userRol === 'READONLY') return;
   const nuevo = prompt(`Estado de ${nombre}:\n1=NORMAL  2=TARDE  3=AUSENTE  4=PERMISO\nActual: ${estadoActual}\n\nIngresa número:`);
@@ -2330,17 +2402,26 @@ function abrirModalPersonal(id) {
   personalEditando = id;
   const p = id ? personal.find(p => p.ID_PERSONAL == id) : null;
 
+  // Default de horas desde PARAMETROS (sin hardcode). Fallbacks por contrato.
+  const horasFT = parseFloat(parametros.HORAS_MAX_SEMANA) || parseFloat(parametros.HORAS_FULL) || 0;
+  const horasPT = parseFloat(parametros.HORAS_PART) || parseFloat(parametros.HORAS_PT) || 0;
+  const horasDefault = horasFT || horasPT || '';
+
   document.getElementById('modalPersonalTitulo').textContent = p ? p.NOMBRE : 'Nueva persona';
   document.getElementById('pNombre').value    = p?.NOMBRE    || '';
   document.getElementById('pAlias').value     = p?.ALIAS     || '';
   document.getElementById('pRol').value       = p?.ROL       || 'MOZO';
   document.getElementById('pContrato').value  = p?.TIPO_CONTRATO || 'FULL';
-  document.getElementById('pHoras').value     = p?.HORAS_SEMANALES || 45;
+  document.getElementById('pHoras').value     = p?.HORAS_SEMANALES || horasDefault;
   document.getElementById('pTelefono').value  = p?.TELEFONO  || '';
 
   poblarSecciones('pSeccion');
   document.getElementById('pSeccion').value = p?.SECCION_DEFAULT || '';
   document.getElementById('modalPersonal').classList.add('open');
+
+  // Ocultar barra de cola mientras se edita personal (no estorba el botón Guardar)
+  const barra = document.getElementById('barraCola');
+  if (barra) barra.style.display = 'none';
 }
 
 function cerrarModalPersonal(e) {
@@ -2348,6 +2429,7 @@ function cerrarModalPersonal(e) {
 }
 function cerrarModalPersonalBtn() {
   document.getElementById('modalPersonal').classList.remove('open');
+  actualizarBarraCola();   // restaurar barra si hay pendientes
 }
 
 async function guardarPersonal() {
