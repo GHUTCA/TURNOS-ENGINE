@@ -1488,6 +1488,10 @@
 // ══════════════════════════════════════
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxV1iza1ee0keqQAqfwysVW38zzsntMDlUiHREbllH5YeKAZuE3wWJ7mqeQY2iFe_I/exec';
 
+// Cervello condiviso dei turni (struttura: locali, skills, cobertura, params globali).
+// Separato dal GAS_URL dei dati: PERSONAL/TURNOS restano sul GAS de arriba.
+const GAS_MAESTRO_URL = 'https://script.google.com/macros/s/AKfycbwBoGwoe9_BADNlzxZnwzrlsSZNTTHvoAuj82KN3X1xiocnhGVViwomp4Yyd-AIztvgKA/exec';
+
 const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DIAS_ES  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -1497,6 +1501,9 @@ let LOCAL       = new URLSearchParams(location.search).get('local') || 'bks';
 let userEmail   = '';
 let userRol     = '';        // JL | CAP | READONLY
 let parametros  = {};
+// Config del locale dal MAESTRO: tipo_negocio (BAKERY/RESTAURANTE), unidad_cobertura (SECCION/PLAZA).
+// Fail-safe a bakery/sección si el MAESTRO no responde.
+let localConfig = { tipo_negocio:'BAKERY', unidad_cobertura:'SECCION', activo:true };
 let personal    = [];
 let turnosMes   = [];
 let secciones   = [];
@@ -1666,6 +1673,22 @@ function mostrarAccesoDenegado(email) {
 // CARGA INICIAL — PARÁMETROS
 // ══════════════════════════════════════
 async function init() {
+  // Config del locale dal MAESTRO (tipo_negocio, unidad_cobertura).
+  // Non bloccante e una sola vez: si el MAESTRO falla, fail-safe bakery/sección.
+  if (!init._configLeida) {
+    init._configLeida = true;
+    try {
+      const rc = await fetch(`${GAS_MAESTRO_URL}?local=${LOCAL}&accion=getLocalConfig`);
+      const dc = await rc.json();
+      if (dc && dc.ok && dc.config) {
+        localConfig = dc.config;
+        aplicarTipoNegocio();
+      }
+    } catch(e) {
+      console.error('MAESTRO no disponible, uso fail-safe bakery/sección:', e);
+    }
+  }
+
   try {
     const res = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getParametros`);
     const data = await res.json();
@@ -1677,6 +1700,15 @@ async function init() {
   } catch(e) {
     console.error('Error cargando parámetros:', e);
   }
+}
+
+// Adapta etiquetas de la UI al tipo de negocio.
+// BAKERY → "sección"; RESTAURANTE → "plaza". Una sola app, dos vestidos.
+function aplicarTipoNegocio() {
+  const esResto = String(localConfig.unidad_cobertura || 'SECCION').toUpperCase() === 'PLAZA';
+  window.UNIDAD_LABEL = esResto ? 'plaza' : 'sección';
+  const tabCob = document.getElementById('tab-cobertura');
+  if (tabCob) tabCob.textContent = esResto ? 'Cobertura · plazas' : 'Cobertura';
 }
 
 // ══════════════════════════════════════
@@ -3276,7 +3308,7 @@ async function cargarSkills() {
       const rp = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getPersonal`).then(r=>r.json());
       personal = rp.personal || [];
     }
-    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getSkills`);
+    const res  = await fetch(`${GAS_MAESTRO_URL}?local=${LOCAL}&accion=getSkills`);
     const data = await res.json();
     if (data && data.ok) {
       skVocab  = Array.isArray(data.vocab) ? data.vocab.map(s=>String(s).toUpperCase()) : [];
@@ -3375,7 +3407,7 @@ async function guardarSkills() {
     matriz:  skMatriz
   };
   try {
-    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const res  = await fetch(GAS_MAESTRO_URL, { method:'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (data && data.ok) mostrarToast('Competencias guardadas ✓', 'ok');
     else mostrarToast((data && data.error) || 'Error al guardar', 'err');
@@ -3400,7 +3432,7 @@ async function cargarCobertura() {
   // asegurar que turnosDef exista (franjas)
   if (!turnosDef || turnosDef.length === 0) construirTurnos();
   try {
-    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getCobertura`);
+    const res  = await fetch(`${GAS_MAESTRO_URL}?local=${LOCAL}&accion=getCobertura`);
     const data = await res.json();
     cobData = (data && data.ok && data.cobertura) ? data.cobertura : {};
   } catch(e) {
@@ -3505,7 +3537,7 @@ async function guardarCobertura() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   const payload = { local: LOCAL, accion: 'guardarCobertura', cobertura: cobData };
   try {
-    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const res  = await fetch(GAS_MAESTRO_URL, { method:'POST', body: JSON.stringify(payload) });
     const data = await res.json();
     if (data && data.ok) mostrarToast('Cobertura guardada ✓', 'ok');
     else mostrarToast((data && data.error) || 'Error al guardar', 'err');
