@@ -1439,6 +1439,7 @@ function formatearRut(rut) {
 // Mientras escribe: formatear y mostrar si es válido
 function onRutInput() {
   const inp = document.getElementById('pRut');
+  if (inp) { inp.style.borderColor = ''; inp.style.boxShadow = ''; }
   const hint = document.getElementById('rutHint');
   const val = inp.value;
   const limpio = limpiarRut(val);
@@ -3047,6 +3048,20 @@ function cerrarModalPersonalBtn() {
   actualizarBarraCola();   // restaurar barra si hay pendientes
 }
 
+// Resalta el campo RUT en rojo, muestra mensaje inline y hace scroll hasta él
+function marcarErrorRut(msg) {
+  const inp  = document.getElementById('pRut');
+  const hint = document.getElementById('rutHint');
+  if (inp)  { inp.style.borderColor = 'var(--ausente, #e74c3c)'; inp.style.boxShadow = '0 0 0 2px rgba(231,76,60,.25)'; }
+  if (hint) { hint.textContent = msg; hint.style.color = 'var(--ausente, #e74c3c)'; }
+  if (inp)  { inp.scrollIntoView({ behavior:'smooth', block:'center' }); inp.focus(); }
+}
+// Limpia el estado de error del campo RUT
+function limpiarErrorRut() {
+  const inp = document.getElementById('pRut');
+  if (inp) { inp.style.borderColor = ''; inp.style.boxShadow = ''; }
+}
+
 async function guardarPersonal() {
   const nombre = document.getElementById('pNombre').value.trim();
   if (!nombre) { mostrarToast('Ingresa un nombre', 'err'); return; }
@@ -3056,10 +3071,11 @@ async function guardarPersonal() {
   const rutVal = document.getElementById('pRut').value.trim();
   let rutLimpio = '';
   if (!sinRut) {
-    if (!rutVal) { mostrarToast('El RUT es obligatorio (o marcá "sin RUT")', 'err'); return; }
-    if (!validarRut(rutVal)) { mostrarToast('RUT inválido — revisá el dígito verificador', 'err'); return; }
+    if (!rutVal) { marcarErrorRut('⚠️ Falta el RUT. Escríbelo, o marcá "Persona sin RUT" más abajo.'); mostrarToast('El RUT es obligatorio (o marcá "sin RUT")', 'err'); return; }
+    if (!validarRut(rutVal)) { marcarErrorRut('✗ RUT inválido — revisá el dígito verificador.'); mostrarToast('RUT inválido — revisá el dígito verificador', 'err'); return; }
     rutLimpio = formatearRut(rutVal);
   }
+  limpiarErrorRut();
 
   const activo = estadoPersonalActivo;
 
