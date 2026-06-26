@@ -871,6 +871,70 @@
   }
   .dia-label { color: var(--gris4); font-size: 9px; }
 
+  /* ── SKILLS & COBERTURA ── */
+  .sk-bloque {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .sk-bloque-h {
+    font-size: 13px; font-weight: 600; color: var(--gris5);
+    margin-bottom: 12px;
+  }
+  .sk-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sk-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 5px 10px; border-radius: 16px;
+    background: var(--gris2); color: var(--gris5);
+  }
+  .sk-chip .x { cursor: pointer; opacity: 0.6; font-weight: 700; }
+  .sk-chip .x:hover { opacity: 1; color: var(--ausente, #e74c3c); }
+  .sk-matriz { display: flex; flex-direction: column; gap: 12px; }
+  .sk-persona-row { border-bottom: 1px solid var(--gris2); padding-bottom: 10px; }
+  .sk-persona-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .sk-persona-nombre {
+    font-size: 13px; font-weight: 600; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sk-persona-rol { font-size: 10px; color: var(--gris4); font-weight: 400; }
+  .sk-niveles { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sk-nivel-item { display: flex; align-items: center; gap: 6px; }
+  .sk-nivel-label { font-size: 12px; color: var(--gris4); }
+  .sk-stars { display: inline-flex; gap: 2px; cursor: pointer; }
+  .sk-star { font-size: 16px; line-height: 1; color: var(--gris3); user-select: none; }
+  .sk-star.on { color: var(--operativo, #f0a020); }
+  /* Cobertura */
+  .cob-franja {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .cob-franja-h {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px;
+  }
+  .cob-franja-nombre { font-size: 14px; font-weight: 600; }
+  .cob-num-wrap { display: flex; align-items: center; gap: 8px; }
+  .cob-num-wrap label { font-size: 12px; color: var(--gris4); }
+  .cob-num-input { width: 56px; text-align: center; }
+  .cob-skills-req { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .cob-skill-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 5px 10px; border-radius: 16px;
+    background: var(--gris2); color: var(--gris5);
+  }
+  .cob-skill-chip .x { cursor: pointer; opacity: 0.6; font-weight: 700; }
+  .cob-skill-chip .x:hover { opacity: 1; color: var(--ausente, #e74c3c); }
+  .cob-add-skill {
+    font-size: 12px; padding: 5px 10px; border-radius: 16px;
+    border: 1px dashed var(--gris3); color: var(--gris4);
+    background: transparent; cursor: pointer;
+  }
+
   /* ── MODAL PERSONAL ── */
   .modal-personal {
     background: var(--gris1);
@@ -1030,6 +1094,8 @@
     <div class="tab jl-only" onclick="cambiarTab('personal')"  id="tab-personal">Personal</div>
     <div class="tab jl-only" onclick="cambiarTab('registros')" id="tab-registros">Registros</div>
     <div class="tab jl-only" onclick="cambiarTab('dobles')"    id="tab-dobles">Dobles</div>
+    <div class="tab jl-only" onclick="cambiarTab('skills')"    id="tab-skills">Skills</div>
+    <div class="tab jl-only" onclick="cambiarTab('cobertura')" id="tab-cobertura">Cobertura</div>
   </div>
 
   <!-- ── PANEL: TURNOS MES ── -->
@@ -1117,6 +1183,62 @@
     <div id="doblesLista" class="personal-lista">
       <div class="loading"><div class="spinner"></div><div class="loading-txt">Cargando dobles turnos...</div></div>
     </div>
+  </div>
+
+  <!-- ── PANEL: SKILLS (competencias) ── -->
+  <div class="panel" id="panel-skills">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+      <span style="font-size:15px;font-weight:600">Competencias</span>
+      <button class="btn" onclick="cargarSkills()" style="padding:8px 14px;margin-left:auto">↺ Actualizar</button>
+    </div>
+    <p style="font-size:12px;color:var(--gris4);margin:0 0 14px">
+      El vocabulario son las competencias posibles (parrillero, sushero, café…). La matriz asigna a cada persona su nivel 0–3.
+      El generador usa esto para mezclar competencias complementarias, no repetir.
+    </p>
+
+    <!-- Vocabulario -->
+    <div class="sk-bloque">
+      <div class="sk-bloque-h">Vocabulario de competencias</div>
+      <div id="skVocabChips" class="sk-chips"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input type="text" class="form-input" id="skNuevaComp" placeholder="Ej: parrillero, sushero, café…" style="flex:1" onkeydown="if(event.key==='Enter'){agregarCompetencia();return false;}">
+        <button class="btn" onclick="agregarCompetencia()" style="padding:8px 16px;white-space:nowrap">+ Añadir</button>
+      </div>
+    </div>
+
+    <!-- Matriz persona × competencia -->
+    <div class="sk-bloque">
+      <div class="sk-bloque-h">Nivel por persona</div>
+      <div id="skMatriz" class="sk-matriz">
+        <div class="loading"><div class="loading-txt">Cargando…</div></div>
+      </div>
+    </div>
+
+    <button class="btn-nuevo" onclick="guardarSkills()" id="btnGuardarSkills">Guardar competencias</button>
+  </div>
+
+  <!-- ── PANEL: COBERTURA (necesidad por franja) ── -->
+  <div class="panel" id="panel-cobertura">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+      <span style="font-size:15px;font-weight:600">Cobertura por franja</span>
+      <button class="btn" onclick="cargarCobertura()" style="padding:8px 14px;margin-left:auto">↺ Actualizar</button>
+    </div>
+    <p style="font-size:12px;color:var(--gris4);margin:0 0 14px">
+      Cuánta gente y qué competencias necesita cada franja. Por defecto aplica a todos los días;
+      podés crear un día especial (ej. domingo brunch con Peak más amplio).
+    </p>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <label style="font-size:12px;color:var(--gris4)">Plantilla:</label>
+      <select class="form-select" id="cobDiaSel" onchange="renderCobertura()" style="max-width:220px"></select>
+      <button class="btn" onclick="nuevoDiaEspecial()" style="padding:8px 14px;white-space:nowrap">+ Día especial</button>
+    </div>
+
+    <div id="cobBloques">
+      <div class="loading"><div class="loading-txt">Cargando…</div></div>
+    </div>
+
+    <button class="btn-nuevo" onclick="guardarCobertura()" id="btnGuardarCobertura">Guardar cobertura</button>
   </div>
 
 </div><!-- fin appMain -->
@@ -3138,6 +3260,262 @@ async function guardarPersonal() {
 }
 
 // ══════════════════════════════════════
+// SKILLS (competencias) — vocabulario + matriz persona×skill
+//   Persistencia: foglio ATA_SKILLS via GAS (getSkills / guardarSkills).
+//   Vocabulario = lista de códigos. Matriz = { ID_PERSONAL: { SKILL: nivel 0-3 } }.
+// ══════════════════════════════════════
+let skVocab  = [];     // ['PARRILLERO','SUSHERO',...]
+let skMatriz = {};      // { 'RSC-P-001': { PARRILLERO:3, CAFE:1 }, ... }
+
+async function cargarSkills() {
+  const cont = document.getElementById('skMatriz');
+  if (cont) cont.innerHTML = '<div class="loading"><div class="loading-txt">Cargando…</div></div>';
+  try {
+    // personal puede no estar cargado si se entra directo a la tab
+    if (!personal || personal.length === 0) {
+      const rp = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getPersonal`).then(r=>r.json());
+      personal = rp.personal || [];
+    }
+    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getSkills`);
+    const data = await res.json();
+    if (data && data.ok) {
+      skVocab  = Array.isArray(data.vocab) ? data.vocab.map(s=>String(s).toUpperCase()) : [];
+      skMatriz = data.matriz || {};
+    } else {
+      skVocab = skVocab.length ? skVocab : [];
+      skMatriz = skMatriz || {};
+    }
+  } catch(e) {
+    mostrarToast('No se pudieron cargar las competencias', 'err');
+  }
+  renderSkVocab();
+  renderSkMatriz();
+}
+
+function renderSkVocab() {
+  const cont = document.getElementById('skVocabChips');
+  if (!cont) return;
+  if (skVocab.length === 0) {
+    cont.innerHTML = '<span style="font-size:12px;color:var(--gris4)">Sin competencias todavía. Añade la primera abajo.</span>';
+    return;
+  }
+  cont.innerHTML = skVocab.map(c =>
+    `<span class="sk-chip">${etiquetaLegible(c)}<span class="x" onclick="quitarCompetencia('${c}')">✕</span></span>`
+  ).join('');
+}
+
+function agregarCompetencia() {
+  const inp = document.getElementById('skNuevaComp');
+  const raw = (inp.value || '').trim();
+  if (!raw) return;
+  const cod = raw.toUpperCase().replace(/\s+/g,'_');
+  if (skVocab.includes(cod)) { mostrarToast('Esa competencia ya existe', 'err'); inp.value=''; return; }
+  skVocab.push(cod);
+  inp.value = '';
+  renderSkVocab();
+  renderSkMatriz();
+}
+
+function quitarCompetencia(cod) {
+  skVocab = skVocab.filter(c => c !== cod);
+  // limpiar niveles de esa skill en la matriz
+  Object.keys(skMatriz).forEach(id => { if (skMatriz[id]) delete skMatriz[id][cod]; });
+  renderSkVocab();
+  renderSkMatriz();
+}
+
+function renderSkMatriz() {
+  const cont = document.getElementById('skMatriz');
+  if (!cont) return;
+  const activos = (personal || []).filter(p => p.ACTIVO === true || p.ACTIVO === 'TRUE' || p._activo === true);
+  if (activos.length === 0) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--gris4);padding:8px">Sin personal activo.</div>';
+    return;
+  }
+  if (skVocab.length === 0) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--gris4);padding:8px">Añade competencias arriba para asignar niveles.</div>';
+    return;
+  }
+  cont.innerHTML = activos.map(p => {
+    const id = p.ID_PERSONAL;
+    const niveles = skMatriz[id] || {};
+    const items = skVocab.map(cod => {
+      const nivel = parseInt(niveles[cod]) || 0;
+      const estrellas = [1,2,3].map(n =>
+        `<span class="sk-star ${n<=nivel?'on':''}" onclick="setNivelSkill('${id}','${cod}',${n})">★</span>`
+      ).join('');
+      return `<div class="sk-nivel-item">
+        <span class="sk-nivel-label">${etiquetaLegible(cod)}</span>
+        <span class="sk-stars">${estrellas}</span>
+      </div>`;
+    }).join('');
+    return `<div class="sk-persona-row">
+      <div class="sk-persona-nombre">${p.NOMBRE}<span class="sk-persona-rol">${etiquetaRol(p)||p.ROL||''}</span></div>
+      <div class="sk-niveles">${items}</div>
+    </div>`;
+  }).join('');
+}
+
+// Toca la misma estrella ya activa => baja un nivel (3→2→1→0)
+function setNivelSkill(id, cod, n) {
+  if (!skMatriz[id]) skMatriz[id] = {};
+  const actual = parseInt(skMatriz[id][cod]) || 0;
+  skMatriz[id][cod] = (actual === n) ? n - 1 : n;
+  if (skMatriz[id][cod] <= 0) delete skMatriz[id][cod];
+  renderSkMatriz();
+}
+
+async function guardarSkills() {
+  const btn = document.getElementById('btnGuardarSkills');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  const payload = {
+    local:   LOCAL,
+    accion:  'guardarSkills',
+    vocab:   skVocab,
+    matriz:  skMatriz
+  };
+  try {
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data && data.ok) mostrarToast('Competencias guardadas ✓', 'ok');
+    else mostrarToast((data && data.error) || 'Error al guardar', 'err');
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Guardar competencias'; }
+}
+
+// ══════════════════════════════════════
+// COBERTURA — necesidad por franja (local × día × franja)
+//   Persistencia: foglio ATA_COBERTURA via GAS (getCobertura / guardarCobertura).
+//   Estructura: { DIA: { FRANJA: { num: n, skills: { SKILL: cantidad } } } }
+//   DIA = 'DEFAULT' o nombre de día especial (ej. 'DOMINGO_BRUNCH').
+// ══════════════════════════════════════
+let cobData    = {};         // { DEFAULT: { APERTURA:{num,skills}, ... }, ... }
+let cobDiaSel  = 'DEFAULT';
+
+async function cargarCobertura() {
+  const cont = document.getElementById('cobBloques');
+  if (cont) cont.innerHTML = '<div class="loading"><div class="loading-txt">Cargando…</div></div>';
+  // asegurar que turnosDef exista (franjas)
+  if (!turnosDef || turnosDef.length === 0) construirTurnos();
+  try {
+    const res  = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getCobertura`);
+    const data = await res.json();
+    cobData = (data && data.ok && data.cobertura) ? data.cobertura : {};
+  } catch(e) {
+    mostrarToast('No se pudo cargar la cobertura', 'err');
+    cobData = cobData || {};
+  }
+  if (!cobData.DEFAULT) cobData.DEFAULT = {};
+  renderCobDiaSelect();
+  renderCobertura();
+}
+
+function renderCobDiaSelect() {
+  const sel = document.getElementById('cobDiaSel');
+  if (!sel) return;
+  const dias = Object.keys(cobData);
+  if (!dias.includes('DEFAULT')) dias.unshift('DEFAULT');
+  sel.innerHTML = dias.map(d =>
+    `<option value="${d}" ${d===cobDiaSel?'selected':''}>${d==='DEFAULT'?'Todos los días (default)':etiquetaLegible(d)}</option>`
+  ).join('');
+  cobDiaSel = sel.value || 'DEFAULT';
+}
+
+function nuevoDiaEspecial() {
+  const nombre = prompt('Nombre del día especial (ej. Domingo brunch):');
+  if (!nombre) return;
+  const cod = nombre.toUpperCase().replace(/\s+/g,'_');
+  if (cobData[cod]) { mostrarToast('Ese día ya existe', 'err'); return; }
+  // arranca como copia del default
+  cobData[cod] = JSON.parse(JSON.stringify(cobData.DEFAULT || {}));
+  cobDiaSel = cod;
+  renderCobDiaSelect();
+  renderCobertura();
+}
+
+function renderCobertura() {
+  const sel = document.getElementById('cobDiaSel');
+  if (sel) cobDiaSel = sel.value || 'DEFAULT';
+  const cont = document.getElementById('cobBloques');
+  if (!cont) return;
+  const franjas = turnosDef || [];
+  if (franjas.length === 0) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--gris4);padding:8px">No hay franjas definidas en PARAMETROS (HORAS_TURNO_*).</div>';
+    return;
+  }
+  if (!cobData[cobDiaSel]) cobData[cobDiaSel] = {};
+  const dia = cobData[cobDiaSel];
+
+  cont.innerHTML = franjas.map(f => {
+    const cod = f.codigo;
+    if (!dia[cod]) dia[cod] = { num: 0, skills: {} };
+    const conf = dia[cod];
+    const skillsChips = Object.keys(conf.skills || {}).map(sk =>
+      `<span class="cob-skill-chip">${etiquetaLegible(sk)} ×${conf.skills[sk]}<span class="x" onclick="quitarSkillCob('${cod}','${sk}')">✕</span></span>`
+    ).join('');
+    return `<div class="cob-franja">
+      <div class="cob-franja-h">
+        <span class="cob-franja-nombre">${f.label} · ${f.entrada}–${f.salida}</span>
+        <div class="cob-num-wrap">
+          <label>Personas</label>
+          <input type="number" min="0" max="20" class="form-input cob-num-input" value="${parseInt(conf.num)||0}"
+                 onchange="setNumCob('${cod}', this.value)">
+        </div>
+      </div>
+      <div class="cob-skills-req">
+        ${skillsChips}
+        <button class="cob-add-skill" onclick="agregarSkillCob('${cod}')">+ competencia</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setNumCob(franja, val) {
+  if (!cobData[cobDiaSel][franja]) cobData[cobDiaSel][franja] = { num:0, skills:{} };
+  cobData[cobDiaSel][franja].num = Math.max(0, parseInt(val) || 0);
+}
+
+function agregarSkillCob(franja) {
+  if (skVocab.length === 0) {
+    mostrarToast('Primero define competencias en la tab Skills', 'err');
+    return;
+  }
+  const lista = skVocab.map((s,i)=>`${i+1}. ${etiquetaLegible(s)}`).join('\n');
+  const sel = prompt('¿Qué competencia exige esta franja?\n\n'+lista+'\n\nEscribe el número:');
+  const idx = parseInt(sel) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= skVocab.length) return;
+  const cod = skVocab[idx];
+  const cant = parseInt(prompt('¿Cuántas personas con esa competencia? (default 1)', '1')) || 1;
+  if (!cobData[cobDiaSel][franja].skills) cobData[cobDiaSel][franja].skills = {};
+  cobData[cobDiaSel][franja].skills[cod] = cant;
+  renderCobertura();
+}
+
+function quitarSkillCob(franja, sk) {
+  if (cobData[cobDiaSel][franja] && cobData[cobDiaSel][franja].skills) {
+    delete cobData[cobDiaSel][franja].skills[sk];
+  }
+  renderCobertura();
+}
+
+async function guardarCobertura() {
+  const btn = document.getElementById('btnGuardarCobertura');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  const payload = { local: LOCAL, accion: 'guardarCobertura', cobertura: cobData };
+  try {
+    const res  = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data && data.ok) mostrarToast('Cobertura guardada ✓', 'ok');
+    else mostrarToast((data && data.error) || 'Error al guardar', 'err');
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Guardar cobertura'; }
+}
+
+// ══════════════════════════════════════
 // NAVEGACIÓN
 // ══════════════════════════════════════
 function cambiarTab(tab) {
@@ -3152,6 +3530,8 @@ function cambiarTab(tab) {
   if (tab === 'personal')  cargarPersonal();
   if (tab === 'registros') cargarRegistros();
   if (tab === 'dobles')    cargarDobles();
+  if (tab === 'skills')    cargarSkills();
+  if (tab === 'cobertura') cargarCobertura();
 }
 
 function cambiarMes(dir) {
