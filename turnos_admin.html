@@ -935,6 +935,56 @@
     background: transparent; cursor: pointer;
   }
 
+  /* ── GENERAR ── */
+  .gen-bloque {
+    background: var(--gris1);
+    border: 1px solid var(--gris2);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .gen-bloque-h { font-size: 13px; font-weight: 600; color: var(--gris5); margin-bottom: 12px; }
+  .gen-pill {
+    flex: 0 0 auto; font-size: 12px; padding: 6px 14px; border-radius: 16px;
+    border: 1px solid var(--gris3); background: transparent; color: var(--gris4);
+    cursor: pointer; font-family: var(--font, inherit);
+  }
+  .gen-pill.active { background: var(--gris2); color: var(--ink, #fff); font-weight: 500; border-color: var(--gris3); }
+  .gen-dias { display: flex; gap: 5px; }
+  .gen-dia {
+    flex: 1; text-align: center; font-size: 12px; padding: 8px 0;
+    border-radius: 6px; cursor: pointer; user-select: none;
+    border: 1px dashed var(--gris3); color: var(--gris4);
+  }
+  .gen-dia.on {
+    background: var(--oro-dim, rgba(217,146,63,.16)); color: var(--oro, #D9923F);
+    border: 1px solid var(--oro, #D9923F); font-weight: 500;
+  }
+  .gen-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 0; border-top: 1px solid var(--gris2); font-size: 12px;
+  }
+  .gen-row:first-of-type { border-top: none; }
+  .gen-excep {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--gris2);
+  }
+  .gen-excep:last-child { border-bottom: none; }
+  .gen-excep .nm { font-size: 13px; font-weight: 500; flex: 1; }
+  .gen-excep .tag {
+    font-size: 11px; padding: 3px 9px; border-radius: 12px;
+    background: var(--oro-dim, rgba(217,146,63,.16)); color: var(--oro, #D9923F);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .gen-excep .tag .x { cursor: pointer; opacity: .7; font-weight: 700; }
+  .gen-excep .tag .x:hover { opacity: 1; color: var(--ausente, #e74c3c); }
+  .gen-add {
+    width: 100%; border: 1px dashed var(--gris3); background: transparent;
+    border-radius: 10px; padding: 9px; font-size: 12px; color: var(--gris4);
+    cursor: pointer; margin-top: 9px; font-family: var(--font, inherit);
+  }
+  .gen-add:hover { border-color: var(--oro, #D9923F); color: var(--oro, #D9923F); }
+
   /* ── MODAL PERSONAL ── */
   .modal-personal {
     background: var(--gris1);
@@ -1077,6 +1127,7 @@
     <div class="tab jl-only" onclick="cambiarTab('dobles')"    id="tab-dobles">Dobles</div>
     <div class="tab jl-only" onclick="cambiarTab('skills')"    id="tab-skills">Skills</div>
     <div class="tab jl-only" onclick="cambiarTab('cobertura')" id="tab-cobertura">Cobertura</div>
+    <div class="tab jl-only" onclick="cambiarTab('generar')"   id="tab-generar">Generar</div>
   </div>
 
   <!-- ── PANEL: TURNOS MES ── -->
@@ -1220,6 +1271,70 @@
     </div>
 
     <button class="btn-nuevo" onclick="guardarCobertura()" id="btnGuardarCobertura">Guardar cobertura</button>
+  </div>
+
+  <!-- ── PANEL: GENERAR (reglas globales + excepciones) ── -->
+  <div class="panel" id="panel-generar">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+      <span style="font-size:15px;font-weight:600">Generar turnos</span>
+      <button class="btn" onclick="cargarGenerar()" style="padding:8px 14px;margin-left:auto">↺ Actualizar</button>
+    </div>
+    <p style="font-size:12px;color:var(--gris4);margin:0 0 14px">
+      Poné las reglas para todos. El sistema ya sabe competencias, perfiles, cobertura y la ley.
+      Solo agregás excepciones si alguien las tiene.
+    </p>
+
+    <!-- Período -->
+    <div class="gen-bloque">
+      <div class="gen-bloque-h">Período</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="gen-pill" id="genModoMes" onclick="setGenModo('mes')">Mes</button>
+        <button class="gen-pill active" id="genModoSemana" onclick="setGenModo('semana')">Semana</button>
+      </div>
+      <select class="form-select" id="genPeriodo"></select>
+    </div>
+
+    <!-- Reglas globales -->
+    <div class="gen-bloque">
+      <div class="gen-bloque-h">Reglas globales</div>
+
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;color:var(--gris5);margin-bottom:8px">Los libres de semana caen en</div>
+        <div class="gen-dias" id="genDiasLibres"></div>
+        <div style="font-size:11px;color:var(--gris4);margin-top:6px">El sistema evita libres en los días apagados (los fuertes).</div>
+      </div>
+
+      <div class="gen-row">
+        <span>Domingos libres al mes</span>
+        <select class="form-select" id="genDomingos" style="width:72px">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="gen-row">
+        <span>Máx días seguidos</span>
+        <span style="color:var(--gris4);font-size:12px">6 · por ley</span>
+      </div>
+    </div>
+
+    <!-- Excepciones -->
+    <div class="gen-bloque">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span class="gen-bloque-h" style="margin:0">Excepciones por persona</span>
+        <span style="font-size:10px;color:var(--gris4)">solo quien la tenga</span>
+      </div>
+      <div id="genExcepLista"></div>
+      <button class="gen-add" onclick="agregarExcepcion()">+ Agregar excepción</button>
+    </div>
+
+    <button class="btn-nuevo" onclick="generarBorrador()" id="btnGenerar"
+      style="background:var(--oro,#D9923F);color:#1a1a1a;border:none">
+      ✦ Generar borrador
+    </button>
+    <div style="text-align:center;font-size:11px;color:var(--gris4);margin-top:9px" id="genFooter">
+      El sistema arma todo y avisa si algo rompe la norma.
+    </div>
   </div>
 
 </div><!-- fin appMain -->
@@ -3547,6 +3662,184 @@ async function guardarCobertura() {
 }
 
 // ══════════════════════════════════════
+// GENERAR — reglas globales + excepciones (input del generador)
+//   Persistencia: foglio GEN_REGLAS via GAS MAESTRO (getReglas / guardarReglas).
+//   Estructura reglas: { dias_libres:['LU','MA','MI'], domingos:2 }
+//   Excepciones: [{ id_personal, tipo:'NO_DIA'|'SOLO_FRANJA', valor }]
+// ══════════════════════════════════════
+const GEN_DIAS = [
+  { cod:'LU', label:'Lu' }, { cod:'MA', label:'Ma' }, { cod:'MI', label:'Mi' },
+  { cod:'JU', label:'Ju' }, { cod:'VI', label:'Vi' }, { cod:'SA', label:'Sa' }
+];
+let genModo      = 'semana';            // 'mes' | 'semana'
+let genReglas    = { dias_libres: ['LU','MA','MI'], domingos: 2 };
+let genExcep     = [];                   // [{id_personal, tipo, valor}]
+
+async function cargarGenerar() {
+  // personal para las excepciones
+  if (!personal || personal.length === 0) {
+    try {
+      const rp = await fetch(`${GAS_URL}?local=${LOCAL}&accion=getPersonal`).then(r=>r.json());
+      personal = rp.personal || [];
+    } catch(e) {}
+  }
+  // reglas guardadas (si existen) desde el MAESTRO
+  try {
+    const res  = await fetch(`${GAS_MAESTRO_URL}?local=${LOCAL}&accion=getReglas`);
+    const data = await res.json();
+    if (data && data.ok) {
+      if (data.reglas)     genReglas = Object.assign(genReglas, data.reglas);
+      if (data.excepciones) genExcep = data.excepciones;
+    }
+  } catch(e) { /* primera vez: usa defaults */ }
+
+  renderGenPeriodo();
+  renderGenDias();
+  document.getElementById('genDomingos').value = String(genReglas.domingos || 2);
+  renderGenExcep();
+}
+
+function setGenModo(modo) {
+  genModo = modo;
+  document.getElementById('genModoMes').classList.toggle('active', modo==='mes');
+  document.getElementById('genModoSemana').classList.toggle('active', modo==='semana');
+  renderGenPeriodo();
+}
+
+// Lista de períodos: meses próximos o semanas (lunes-domingo) del mes en curso y siguiente
+function renderGenPeriodo() {
+  const sel = document.getElementById('genPeriodo');
+  if (!sel) return;
+  const hoy = new Date();
+  let html = '';
+  if (genModo === 'mes') {
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+      const val = `mes:${d.getFullYear()}-${d.getMonth()+1}`;
+      html += `<option value="${val}">${MESES_ES[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+  } else {
+    // próximas 8 semanas desde el lunes de esta semana
+    let lunes = getLunes(hoy);
+    for (let i = 0; i < 8; i++) {
+      const ini = new Date(lunes); ini.setDate(lunes.getDate() + i*7);
+      const fin = new Date(ini);   fin.setDate(ini.getDate() + 6);
+      const val = `sem:${formatFecha(ini)}`;
+      const lbl = `${ini.getDate()} ${MESES_ES[ini.getMonth()].slice(0,3)} – ${fin.getDate()} ${MESES_ES[fin.getMonth()].slice(0,3)}`;
+      html += `<option value="${val}">S${i+1} · ${lbl}</option>`;
+    }
+  }
+  sel.innerHTML = html;
+}
+
+function renderGenDias() {
+  const cont = document.getElementById('genDiasLibres');
+  if (!cont) return;
+  cont.innerHTML = GEN_DIAS.map(d => {
+    const on = genReglas.dias_libres.includes(d.cod);
+    return `<div class="gen-dia ${on?'on':''}" onclick="toggleGenDia('${d.cod}')">${d.label}</div>`;
+  }).join('');
+}
+
+function toggleGenDia(cod) {
+  const i = genReglas.dias_libres.indexOf(cod);
+  if (i === -1) genReglas.dias_libres.push(cod);
+  else genReglas.dias_libres.splice(i, 1);
+  renderGenDias();
+}
+
+function renderGenExcep() {
+  const cont = document.getElementById('genExcepLista');
+  if (!cont) return;
+  if (genExcep.length === 0) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--gris4);padding:4px 0">Sin excepciones. Todos siguen las reglas globales.</div>';
+    return;
+  }
+  cont.innerHTML = genExcep.map((e, idx) => {
+    const p = (personal || []).find(x => x.ID_PERSONAL === e.id_personal);
+    const nombre = p ? p.NOMBRE : e.id_personal;
+    const txt = e.tipo === 'NO_DIA'
+      ? `no trabaja ${etiquetaDia(e.valor)}`
+      : `solo ${etiquetaLegible(e.valor)}`;
+    return `<div class="gen-excep">
+      <span class="nm">${nombre}</span>
+      <span class="tag">${txt}<span class="x" onclick="quitarExcepcion(${idx})">✕</span></span>
+    </div>`;
+  }).join('');
+}
+
+function etiquetaDia(cod) {
+  const m = { LU:'lunes', MA:'martes', MI:'miércoles', JU:'jueves', VI:'viernes', SA:'sábado', DO:'domingo' };
+  return m[String(cod).toUpperCase()] || cod;
+}
+
+// Alta de excepción vía prompts simples (modal completo se puede pulir luego)
+function agregarExcepcion() {
+  const activos = (personal || []).filter(p => p.ACTIVO === true || p.ACTIVO === 'TRUE' || p._activo === true);
+  if (activos.length === 0) { mostrarToast('No hay personal cargado', 'err'); return; }
+
+  const lista = activos.map((p,i) => `${i+1}. ${p.NOMBRE}`).join('\n');
+  const selP = parseInt(prompt('¿Quién?\n\n' + lista + '\n\nNúmero:')) - 1;
+  if (isNaN(selP) || selP < 0 || selP >= activos.length) return;
+  const idp = activos[selP].ID_PERSONAL;
+
+  const tipo = prompt('Tipo de excepción:\n1. No trabaja cierto día\n2. Solo cierta franja\n\nNúmero:');
+  if (tipo === '1') {
+    const dias = GEN_DIAS.concat([{cod:'DO',label:'Do'}]);
+    const ld = dias.map((d,i)=>`${i+1}. ${etiquetaDia(d.cod)}`).join('\n');
+    const sd = parseInt(prompt('¿Qué día no trabaja?\n\n'+ld+'\n\nNúmero:')) - 1;
+    if (isNaN(sd) || sd < 0 || sd >= dias.length) return;
+    genExcep.push({ id_personal: idp, tipo: 'NO_DIA', valor: dias[sd].cod });
+  } else if (tipo === '2') {
+    if (!turnosDef || turnosDef.length === 0) construirTurnos();
+    const lf = turnosDef.map((t,i)=>`${i+1}. ${t.label}`).join('\n');
+    const sf = parseInt(prompt('¿Solo qué franja?\n\n'+lf+'\n\nNúmero:')) - 1;
+    if (isNaN(sf) || sf < 0 || sf >= turnosDef.length) return;
+    genExcep.push({ id_personal: idp, tipo: 'SOLO_FRANJA', valor: turnosDef[sf].codigo });
+  } else return;
+
+  renderGenExcep();
+}
+
+function quitarExcepcion(idx) {
+  genExcep.splice(idx, 1);
+  renderGenExcep();
+}
+
+// Guarda las reglas en el MAESTRO y (por ahora) avisa que el motor llega después.
+async function generarBorrador() {
+  genReglas.domingos = parseInt(document.getElementById('genDomingos').value) || 2;
+  if (genReglas.dias_libres.length === 0) {
+    mostrarToast('Elegí al menos un día donde puedan caer los libres', 'err');
+    return;
+  }
+  const periodo = document.getElementById('genPeriodo').value;
+
+  const btn = document.getElementById('btnGenerar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando reglas…'; }
+
+  const payload = {
+    local: LOCAL, accion: 'guardarReglas',
+    reglas: { dias_libres: genReglas.dias_libres, domingos: genReglas.domingos },
+    excepciones: genExcep
+  };
+  try {
+    const res  = await fetch(GAS_MAESTRO_URL, { method:'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data && data.ok) {
+      mostrarToast('Reglas guardadas ✓', 'ok');
+      document.getElementById('genFooter').textContent =
+        'Reglas listas. El motor de generación se conecta en el próximo paso.';
+    } else {
+      mostrarToast((data && data.error) || 'Error al guardar', 'err');
+    }
+  } catch(e) {
+    mostrarToast('Error de conexión', 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '✦ Generar borrador'; }
+}
+
+// ══════════════════════════════════════
 // NAVEGACIÓN
 // ══════════════════════════════════════
 function cambiarTab(tab) {
@@ -3563,6 +3856,7 @@ function cambiarTab(tab) {
   if (tab === 'dobles')    cargarDobles();
   if (tab === 'skills')    cargarSkills();
   if (tab === 'cobertura') cargarCobertura();
+  if (tab === 'generar')   cargarGenerar();
 }
 
 function cambiarMes(dir) {
